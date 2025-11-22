@@ -1,0 +1,173 @@
+# Spark EventLog解析配置文件示例
+# 复制此文件为config.yaml并修改相应配置
+
+# HDFS配置
+hdfs:
+  default_cluster: "cluster1"
+  clusters:
+    # 集群1配置
+    cluster1:
+      # EventLog目录路径
+      # 优先使用日期子目录结构：/spark-logs/2024-01-15/
+      # 如果是扁平结构：/spark-logs/
+      event_log_dir: "/spark-logs"
+      # 是否按日期子目录组织（推荐）
+      use_date_subdir: true
+      # 日期目录格式：yyyy-MM-dd 或 yyyy/MM/dd
+      date_dir_format: "yyyy-MM-dd"
+    
+    # 集群2配置
+    cluster2:
+      event_log_dir: "/spark-logs"
+      use_date_subdir: false
+
+# Hive配置
+hive:
+  # Hive库名
+  database: "meta"
+  # Hive Metastore URI（可选，如果Spark已配置Hive，可不填）
+  metastore_uri: "thrift://hive-metastore:9083"
+  # 写入模式：overwrite（覆盖，推荐）或 append（追加）
+  write_mode: "overwrite"
+  # 是否使用动态分区（必须为true）
+  dynamic_partition: true
+  # 动态分区模式（必须为nonstrict）
+  dynamic_partition_mode: "nonstrict"
+  # 表名配置（可选，使用默认值）
+  tables:
+    applications: "spark_applications"
+    jobs: "spark_jobs"
+    stages: "spark_stages"
+    executors: "spark_executors"
+    diagnosis: "spark_diagnosis"
+    parser_status: "spark_parser_status"
+
+# 解析配置
+parser:
+  # 默认解析日期（可选，通常通过spark.conf传入）
+  # 格式：YYYY-MM-DD，如果为null则使用昨天
+  default_date: null
+  
+  # 文件扫描模式
+  # date_subdir: 根据日期子目录扫描（推荐，速度快）
+  # mtime: 根据文件修改时间判断
+  # filename: 根据文件名中的时间戳判断
+  scan_mode: "date_subdir"
+  
+  # 是否解析Task级别数据（数据量巨大，默认false）
+  parse_tasks: false
+  
+  # Spark并行度配置
+  # 文件列表并行度（用于文件扫描）
+  file_scan_parallelism: 100
+  # 解析并行度（RDD分区数）
+  parse_parallelism: 2000
+  # 动态调整并行度（根据文件数量和大小自动计算）
+  auto_parallelism: true
+  # 目标：每个partition处理的数据量（MB）
+  target_partition_size_mb: 200
+  
+  # 输出文件数量控制（避免小文件）
+  # auto: 根据数据量自动计算（推荐）
+  # 固定值：如 200
+  output_partitions: "auto"
+  # 每个输出文件的目标大小（MB）
+  target_output_file_size_mb: 256
+  
+  # 是否跳过.inprogress文件（正在写入的文件，必须true）
+  skip_inprogress: true
+  
+  # 文件过滤规则（正则表达式）
+  file_pattern: "^application_.*"
+  # 排除文件规则
+  exclude_pattern: ".*\\.tmp$|.*\\.swp$"
+  
+  # 是否启用检查点（断点续传）
+  enable_checkpoint: true
+  # 检查点目录
+  checkpoint_dir: "hdfs:///tmp/spark_parser_checkpoint"
+  
+  # 是否启用幂等性保证（状态表）
+  enable_idempotency: true
+
+# 数据质量配置
+quality:
+  # 是否启用数据质量检查
+  enable_check: true
+  # 最小期望记录数（少于此值告警）
+  min_expected_records: 1000
+  # 最大失败率（超过此值告警）
+  max_failure_rate: 0.05
+  # 是否在质量检查失败时终止任务
+  fail_on_quality_issue: true
+  # 质量检查规则
+  rules:
+    - name: "null_check"
+      enabled: true
+      columns: ["app_id", "cluster_name", "dt"]
+    - name: "time_validation"
+      enabled: true
+      check: "start_time <= end_time"
+    - name: "duplicate_check"
+      enabled: true
+      keys: ["cluster_name", "app_id", "dt"]
+
+# 监控配置
+monitoring:
+  # 是否启用监控
+  enabled: true
+  # Prometheus PushGateway地址
+  prometheus_gateway: "prometheus-pushgateway:9091"
+  # 监控指标前缀
+  metric_prefix: "spark_eventlog_parser"
+  # 是否推送到自定义监控系统
+  custom_reporter:
+    enabled: false
+    url: "http://monitor.company.com/api/metrics"
+    auth_token: "${MONITOR_TOKEN}"
+
+# 错误处理配置
+error_handling:
+  # 单文件解析失败策略
+  # skip: 跳过继续（推荐）
+  # fail: 立即失败
+  # quarantine: 移到隔离目录
+  on_file_error: "skip"
+  # 隔离目录
+  quarantine_dir: "hdfs:///spark-parser/quarantine"
+  # 最大允许失败文件数（超过此值任务失败）
+  max_failed_files: 1000
+  # 最大允许失败率
+  max_failure_rate: 0.1
+  # 是否记录错误详情到Hive表
+  log_errors_to_hive: true
+
+# Spark资源配置（仅作为参考，实际通过spark-submit传入）
+spark:
+  # 应用名称模板
+  app_name_template: "SparkEventLogParser-{cluster}-{date}"
+  # Driver配置
+  driver:
+    memory: "8g"
+    cores: 4
+  # Executor配置
+  executor:
+    memory: "12g"
+    memory_overhead: "2g"
+    cores: 4
+    instances: 200
+  # Spark配置
+  conf:
+    "spark.sql.shuffle.partitions": 2000
+    "spark.serializer": "org.apache.spark.serializer.KryoSerializer"
+    "spark.sql.sources.partitionOverwriteMode": "dynamic"
+    "spark.sql.adaptive.enabled": "true"
+    "spark.sql.adaptive.coalescePartitions.enabled": "true"
+
+# 日志配置
+logging:
+  # 日志级别：DEBUG, INFO, WARN, ERROR
+  level: "INFO"
+  # Spark日志级别
+  spark_level: "WARN"
+
