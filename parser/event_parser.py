@@ -12,9 +12,10 @@ from parser.metrics_calculator import MetricsCalculator
 class ApplicationState:
     """应用状态管理器"""
     
-    def __init__(self, cluster_name, target_date):
+    def __init__(self, cluster_name, target_date, collect_tasks=True):
         self.cluster_name = cluster_name
         self.target_date = target_date
+        self.collect_tasks = collect_tasks
         
         # 应用级别
         self.app_id = None
@@ -170,12 +171,13 @@ class EventLogParser:
     """EventLog解析器"""
     
     @staticmethod
-    def parse_file(file_path, cluster_name, target_date):
+    def parse_file(file_path, cluster_name, target_date, collect_tasks=True):
         """
         解析单个EventLog文件
         :param file_path: 文件路径
         :param cluster_name: 集群名称
         :param target_date: 目标日期
+        :param collect_tasks: 是否收集Task级别数据
         :return: 解析结果字典
         """
         from pyspark import SparkContext
@@ -194,7 +196,7 @@ class EventLogParser:
         input_stream = fs.open(path)
         
         # 创建应用状态
-        app_state = ApplicationState(cluster_name, target_date)
+        app_state = ApplicationState(cluster_name, target_date, collect_tasks)
         
         # 逐行解析
         try:
@@ -259,7 +261,8 @@ class EventLogParser:
         
         elif event_type == 'SparkListenerApplicationEnd':
             app_state.end_time = event.get('Timestamp')
-            app_state.status = 'FINISHED'
+            if app_state.status != 'FAILED':
+                app_state.status = 'FINISHED'
         
         elif event_type == 'SparkListenerJobStart':
             job_id = event.get('Job ID')
@@ -279,12 +282,20 @@ class EventLogParser:
                 app_state.jobs[job_id]['completion_time'] = event.get('Completion Time')
                 
                 result = event.get('Job Result', {})
+                result_type = 'JobSucceeded'
                 if isinstance(result, dict):
-                    result_type = result.get('Result', 'JobSucceeded')
-                else:
+                    result_type = result.get('Result') or result.get('result') or result_type
+                elif result is not None:
                     result_type = str(result)
                 
-                app_state.jobs[job_id]['status'] = 'SUCCEEDED' if 'Success' in result_type else 'FAILED'
+                result_type_lower = result_type.lower()
+                job_status = 'FAILED'
+                if 'succeed' in result_type_lower or 'success' in result_type_lower:
+                    job_status = 'SUCCEEDED'
+                
+                app_state.jobs[job_id]['status'] = job_status
+                if job_status == 'FAILED':
+                    app_state.status = 'FAILED'
         
         elif event_type == 'SparkListenerStageSubmitted':
             stage_info = event.get('Stage Info', {})
@@ -341,6 +352,8 @@ class EventLogParser:
             # 修复: 正确判断Stage状态 - 有Failure Reason则为FAILED，否则为SUCCEEDED
             stage_record['status'] = 'FAILED' if stage_info.get('Failure Reason') else 'SUCCEEDED'
             stage_record['num_failed_tasks'] = stage_info.get('Number of Failed Tasks', 0)
+            if stage_record['status'] == 'FAILED':
+                app_state.status = 'FAILED'
             
             # 提取Task Metrics汇总
             task_metrics = stage_info.get('Task Metrics', {})
@@ -379,6 +392,8 @@ class EventLogParser:
             app_state.stage_attempts.pop(stage_key, None)
         
         elif event_type == 'SparkListenerTaskEnd':
+            if not app_state.collect_tasks:
+                return
             task_info = event.get('Task Info', {})
             stage_id = event.get('Stage ID')
             attempt_id = event.get('Stage Attempt ID', 0)

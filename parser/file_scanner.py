@@ -31,19 +31,19 @@ class FileScanner:
         if not fs.exists(log_dir_path):
             raise FileNotFoundError(f"EventLog目录不存在: {config.event_log_dir}")
         
-        # 方案1: 如果有日期子目录 (例如: /spark-logs/2024-01-15/)
-        date_subdir = sc._jvm.org.apache.hadoop.fs.Path(
-            config.event_log_dir, 
-            config.target_date
-        )
+        files = []
         
-        if fs.exists(date_subdir):
-            print(f"发现日期子目录: {date_subdir}")
-            files = FileScanner._scan_directory(fs, date_subdir, config)
-        else:
-            # 方案2: 全目录扫描并按日期过滤
-            print(f"未发现日期子目录，扫描全目录并按日期过滤...")
-            files = FileScanner._scan_and_filter(spark, fs, log_dir_path, config)
+        # 方案1: 如果配置了日期子目录 (例如: /spark-logs/2024-01-15/)
+        if config.use_date_subdir:
+            date_subdir_path = FileScanner._build_date_subdir_path(sc, config)
+            if fs.exists(date_subdir_path):
+                print(f"发现日期子目录: {date_subdir_path}")
+                files = FileScanner._scan_directory(fs, date_subdir_path, config)
+        
+        # 方案2: 全目录扫描并按日期过滤
+        if not files:
+            print(f"按修改时间过滤目录: {config.event_log_dir}")
+            files = FileScanner._scan_and_filter(fs, log_dir_path, config)
         
         print(f"扫描完成，找到 {len(files)} 个文件")
         return files
@@ -75,46 +75,62 @@ class FileScanner:
         return files
     
     @staticmethod
-    def _scan_and_filter(spark, fs, dir_path, config):
+    def _scan_and_filter(fs, dir_path, config):
         """
         扫描全目录并按文件修改时间过滤
-        使用 Spark 3.x binaryFile 数据源进行优化扫描
+        仅使用Hadoop FileSystem元数据，避免读取文件内容
         """
-        from pyspark.sql.functions import col, to_date, lit
+        from collections import deque
+        target_date = datetime.strptime(config.target_date, '%Y-%m-%d').date()
+        matched_files = []
         
-        print(f"使用 Spark binaryFile 数据源扫描目录: {config.event_log_dir}")
+        queue = deque([dir_path])
+        while queue:
+            current = queue.popleft()
+            try:
+                iterator = fs.listStatusIterator(current)
+            except Exception as e:
+                print(f"列出目录失败: {current}, 错误: {e}")
+                continue
+            
+            while iterator.hasNext():
+                status = iterator.next()
+                if status.isDirectory():
+                    queue.append(status.getPath())
+                    continue
+                
+                path = status.getPath()
+                
+                # 跳过.inprogress文件
+                if config.skip_inprogress and path.getName().endswith('.inprogress'):
+                    continue
+                
+                mod_time = status.getModificationTime() / 1000.0
+                file_date = datetime.fromtimestamp(mod_time).date()
+                if file_date == target_date:
+                    matched_files.append(path.toString())
         
-        try:
-            # 使用 binaryFile 读取元数据 (不读取 content)
-            # recursiveFileLookup=true: 递归查找并禁用分区推断
-            df = spark.read.format("binaryFile") \
-                .option("pathGlobFilter", "*") \
-                .option("recursiveFileLookup", "true") \
-                .load(config.event_log_dir) \
-                .select("path", "modificationTime")
-            
-            # 构建过滤条件
-            # 1. 过滤 .inprogress 文件
-            if config.skip_inprogress:
-                df = df.filter(~col("path").endswith(".inprogress"))
-            
-            # 2. 按修改时间过滤
-            # modificationTime 是 TimestampType
-            df = df.filter(to_date(col("modificationTime")) == lit(config.target_date))
-            
-            # 获取符合条件的文件路径列表
-            # 注意：这里只 collect 最终符合条件的路径，大大减少 Driver 内存压力
-            print(f"开始执行 Spark SQL 过滤...")
-            filtered_files = df.select("path").rdd.flatMap(lambda x: x).collect()
-            
-            return filtered_files
-            
-        except Exception as e:
-            print(f"Spark binaryFile 扫描失败: {e}")
-            print("降级使用 Driver 端单线程扫描...")
-            # 如果 binaryFile 失败（例如 Spark 版本过低），回退到手动扫描
-            # 但仅扫描第一层以避免 OOM
-            return FileScanner._scan_directory(fs, dir_path, config)
+        return matched_files
+    
+    @staticmethod
+    def _build_date_subdir_path(sc, config):
+        """根据配置格式构造日期子目录路径"""
+        relative = FileScanner._format_target_date(config.target_date, config.date_dir_format)
+        return sc._jvm.org.apache.hadoop.fs.Path(config.event_log_dir, relative)
+    
+    @staticmethod
+    def _format_target_date(target_date, pattern):
+        """将目标日期按配置格式化"""
+        dt = datetime.strptime(target_date, '%Y-%m-%d')
+        python_pattern = pattern
+        replacements = {
+            'yyyy': '%Y',
+            'MM': '%m',
+            'dd': '%d'
+        }
+        for key, value in replacements.items():
+            python_pattern = python_pattern.replace(key, value)
+        return dt.strftime(python_pattern)
     
     @staticmethod
     def _list_all_files(fs, dir_path, max_depth=3, current_depth=0):

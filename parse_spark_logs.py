@@ -127,7 +127,8 @@ def parse_eventlogs(spark, config):
             result = EventLogParser.parse_file(
                 file_path, 
                 config.cluster_name,
-                config.target_date
+                config.target_date,
+                config.parse_tasks
             )
             return ('success', file_path, result)
         except Exception as e:

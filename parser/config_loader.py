@@ -32,6 +32,8 @@ class ParserConfig:
         cluster_config = clusters.get(self.cluster_name, {})
         
         self.event_log_dir = cluster_config.get('event_log_dir', '/spark-logs')
+        self.use_date_subdir = cluster_config.get('use_date_subdir', False)
+        self.date_dir_format = cluster_config.get('date_dir_format', 'yyyy-MM-dd')
         
         # Hive配置
         hive_config = config_dict.get('hive', {})
@@ -39,6 +41,16 @@ class ParserConfig:
         self.hive_metastore_uri = hive_config.get('metastore_uri')
         self.write_mode = hive_config.get('write_mode', 'overwrite')
         self.dynamic_partition = hive_config.get('dynamic_partition', True)
+        self.dynamic_partition_mode = hive_config.get('dynamic_partition_mode', 'nonstrict')
+        tables_default = {
+            'applications': 'spark_applications',
+            'jobs': 'spark_jobs',
+            'stages': 'spark_stages',
+            'executors': 'spark_executors',
+            'diagnosis': 'spark_diagnosis',
+            'parser_status': 'spark_parser_status'
+        }
+        self.hive_tables = {**tables_default, **hive_config.get('tables', {})}
         
         # 解析配置
         parser_config = config_dict.get('parser', {})
@@ -136,18 +148,30 @@ class ConfigLoader:
             # 使用Hadoop FileSystem API读取
             sc = spark.sparkContext
             fs = sc._jvm.org.apache.hadoop.fs.FileSystem.get(
-                sc._jvm.java.net.URI(file_path),
                 sc._jsc.hadoopConfiguration()
             )
             path = sc._jvm.org.apache.hadoop.fs.Path(file_path)
             input_stream = fs.open(path)
             
-            # 读取内容
-            import io
-            content = input_stream.readAllBytes()
-            input_stream.close()
+            try:
+                # 逐行读取，兼容Java 8环境
+                reader = sc._jvm.java.io.BufferedReader(
+                    sc._jvm.java.io.InputStreamReader(input_stream, "UTF-8")
+                )
+                lines = []
+                line = reader.readLine()
+                while line is not None:
+                    lines.append(line)
+                    line = reader.readLine()
+                reader.close()
+            finally:
+                try:
+                    input_stream.close()
+                except Exception:
+                    pass
             
-            yaml_content = content.decode('utf-8')
+            import io
+            yaml_content = "\n".join(lines)
             return yaml.safe_load(io.StringIO(yaml_content))
         else:
             # 本地文件
