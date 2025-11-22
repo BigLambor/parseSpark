@@ -18,6 +18,7 @@ class HiveWriter:
         """
         self.spark = spark
         self.config = config
+        self.table_names = config.hive_tables
         self._setup_hive()
     
     def _setup_hive(self):
@@ -26,7 +27,7 @@ class HiveWriter:
         if self.config.dynamic_partition:
             self.spark.sql("SET spark.sql.sources.partitionOverwriteMode=dynamic")
             self.spark.sql("SET hive.exec.dynamic.partition=true")
-            self.spark.sql("SET hive.exec.dynamic.partition.mode=nonstrict")
+            self.spark.sql(f"SET hive.exec.dynamic.partition.mode={self.config.dynamic_partition_mode}")
         
         # 设置Hive数据库
         self.spark.sql(f"USE {self.config.hive_database}")
@@ -81,12 +82,7 @@ class HiveWriter:
         print(f"实际写入 {record_count} 条，输出 {num_files} 个文件")
         
         # 写入Hive表
-        df.coalesce(num_files) \
-            .write \
-            .mode(self.config.write_mode) \
-            .format('parquet') \
-            .option('compression', 'snappy') \
-            .insertInto(f'{self.config.hive_database}.spark_applications')
+        self._write_table(df, self.table_names['applications'], num_files)
         
         print("应用数据写入完成")
     
@@ -130,12 +126,7 @@ class HiveWriter:
         print(f"实际写入 {record_count} 条，输出 {num_files} 个文件")
         
         # 写入Hive表
-        df.coalesce(num_files) \
-            .write \
-            .mode(self.config.write_mode) \
-            .format('parquet') \
-            .option('compression', 'snappy') \
-            .insertInto(f'{self.config.hive_database}.spark_jobs')
+        self._write_table(df, self.table_names['jobs'], num_files)
         
         print("Job数据写入完成")
     
@@ -179,12 +170,7 @@ class HiveWriter:
         print(f"实际写入 {record_count} 条，输出 {num_files} 个文件")
         
         # 写入Hive表
-        df.coalesce(num_files) \
-            .write \
-            .mode(self.config.write_mode) \
-            .format('parquet') \
-            .option('compression', 'snappy') \
-            .insertInto(f'{self.config.hive_database}.spark_stages')
+        self._write_table(df, self.table_names['stages'], num_files)
         
         print("Stage数据写入完成")
     
@@ -228,12 +214,7 @@ class HiveWriter:
         print(f"实际写入 {record_count} 条，输出 {num_files} 个文件")
         
         # 写入Hive表
-        df.coalesce(num_files) \
-            .write \
-            .mode(self.config.write_mode) \
-            .format('parquet') \
-            .option('compression', 'snappy') \
-            .insertInto(f'{self.config.hive_database}.spark_executors')
+        self._write_table(df, self.table_names['executors'], num_files)
         
         print("Executor数据写入完成")
     
@@ -270,4 +251,14 @@ class HiveWriter:
             print(f"Stage数: {stats.total_stages}")
             print(f"Executor数: {stats.total_executors}")
         print("="*50 + "\n")
+    
+    def _write_table(self, df, table_name, num_files):
+        """统一写入逻辑"""
+        full_table_name = f'{self.config.hive_database}.{table_name}'
+        df.coalesce(num_files) \
+            .write \
+            .mode(self.config.write_mode) \
+            .format('parquet') \
+            .option('compression', 'snappy') \
+            .saveAsTable(full_table_name)
 

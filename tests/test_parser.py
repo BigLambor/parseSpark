@@ -51,6 +51,64 @@ class TestApplicationState(unittest.TestCase):
         self.assertEqual(job.duration_ms, 500000)
         self.assertEqual(job.status, 'SUCCEEDED')
         self.assertEqual(job.stage_count, 2)
+    
+    def test_job_status_detection(self):
+        """测试Job成功状态识别"""
+        EventLogParser._handle_event('SparkListenerJobStart', {
+            'Job ID': 1,
+            'Submission Time': 1000,
+            'Stage IDs': []
+        }, self.app_state)
+        EventLogParser._handle_event('SparkListenerJobEnd', {
+            'Job ID': 1,
+            'Completion Time': 2000,
+            'Job Result': {'Result': 'JobSucceeded'}
+        }, self.app_state)
+        self.assertEqual(self.app_state.jobs[1]['status'], 'SUCCEEDED')
+        
+        EventLogParser._handle_event('SparkListenerApplicationEnd', {
+            'Timestamp': 3000
+        }, self.app_state)
+        self.assertEqual(self.app_state.status, 'FINISHED')
+    
+    def test_job_failure_marks_application_failed(self):
+        """测试Job失败会导致应用失败"""
+        EventLogParser._handle_event('SparkListenerJobStart', {
+            'Job ID': 2,
+            'Submission Time': 1000,
+            'Stage IDs': []
+        }, self.app_state)
+        EventLogParser._handle_event('SparkListenerJobEnd', {
+            'Job ID': 2,
+            'Completion Time': 2000,
+            'Job Result': {'Result': 'JobFailed'}
+        }, self.app_state)
+        
+        self.assertEqual(self.app_state.jobs[2]['status'], 'FAILED')
+        self.assertEqual(self.app_state.status, 'FAILED')
+        
+        EventLogParser._handle_event('SparkListenerApplicationEnd', {
+            'Timestamp': 3000
+        }, self.app_state)
+        self.assertEqual(self.app_state.status, 'FAILED')
+    
+    def test_skip_task_collection_when_disabled(self):
+        """测试关闭Task收集开关"""
+        app_state = ApplicationState('cluster', '2024-01-15', collect_tasks=False)
+        EventLogParser._handle_event('SparkListenerTaskEnd', {
+            'Task Info': {
+                'Launch Time': 0,
+                'Finish Time': 10
+            },
+            'Stage ID': 0,
+            'Stage Attempt ID': 0,
+            'Task Metrics': {
+                'Input Metrics': {
+                    'Bytes Read': 100
+                }
+            }
+        }, app_state)
+        self.assertEqual(len(app_state.stage_tasks), 0)
 
 
 class TestMetricsCalculator(unittest.TestCase):
