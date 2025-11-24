@@ -33,6 +33,7 @@ class ParseStatistics:
         self.total_stages = 0
         self.total_executors = 0
         self.failed_file_list = []
+        self.success_file_list = []  # 修复P0问题：添加成功文件列表
     
     def record_success(self):
         """记录成功"""
@@ -152,10 +153,15 @@ def parse_eventlogs(spark, config):
     success_count = success_rdd.count()
     failed_count = failed_rdd.count()
     
+    # 修复P0问题：收集成功文件列表（仅路径，用于状态记录）
+    # 注意：只收集文件路径，不收集解析结果，避免Driver OOM
+    success_file_list = success_rdd.map(lambda x: x[1]).collect()
+    
     # 记录统计
     stats.success_files = success_count
     stats.failed_files = failed_count
     stats.failed_file_list = failed_list
+    stats.success_file_list = success_file_list  # 添加成功文件列表
     
     # 修复: 直接从RDD提取数据并展平，避免在Driver端汇总大数据
     # 提取各类指标并转换为对象列表（仍在RDD中）
@@ -206,6 +212,9 @@ def main():
         # 写入Hive
         writer = HiveWriter(spark, config)
         writer.write_all(parse_results)
+        
+        # 修复P0问题：写入解析状态表（幂等性保证）
+        writer.write_parser_status(parse_results)
         
         # 获取统计信息
         stats = parse_results['statistics']

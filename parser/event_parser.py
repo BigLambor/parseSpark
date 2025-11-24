@@ -192,11 +192,27 @@ class EventLogParser:
         
         path = sc._jvm.org.apache.hadoop.fs.Path(file_path)
         
+        # 修复问题2: 检测并处理压缩格式（.lz4, .snappy等）
+        # 使用Hadoop CompressionCodecFactory自动检测压缩格式
+        codec_factory = sc._jvm.org.apache.hadoop.io.compress.CompressionCodecFactory(
+            sc._jsc.hadoopConfiguration()
+        )
+        codec = codec_factory.getCodec(path)
+        
         # 打开文件流
-        input_stream = fs.open(path)
+        raw_input_stream = fs.open(path)
+        
+        # 如果文件是压缩的，创建解压流；否则直接使用原始流
+        if codec is not None:
+            input_stream = codec.createInputStream(raw_input_stream)
+        else:
+            input_stream = raw_input_stream
         
         # 创建应用状态
         app_state = ApplicationState(cluster_name, target_date, collect_tasks)
+        
+        # 修复P0问题：初始化reader变量，确保finally块可以访问
+        reader = None
         
         # 逐行解析
         try:
@@ -219,8 +235,16 @@ class EventLogParser:
                     # 分发到对应的处理函数
                     EventLogParser._handle_event(event_type, event, app_state)
                 
-                except json.JSONDecodeError:
-                    # 跳过无效的JSON行
+                except json.JSONDecodeError as e:
+                    # 修复问题2: 压缩文件解析失败时提供更明确的错误信息
+                    # 如果遇到JSONDecodeError且文件是压缩的，可能是压缩格式问题
+                    if codec is not None:
+                        raise Exception(
+                            f"解析压缩文件失败: {file_path}, "
+                            f"压缩格式: {codec.getClass().getSimpleName()}, "
+                            f"JSON解析错误: {e}"
+                        )
+                    # 非压缩文件的无效JSON行，跳过
                     pass
                 except Exception as e:
                     # 记录错误但继续处理
@@ -228,15 +252,28 @@ class EventLogParser:
                 
                 line = reader.readLine()
             
+            # 正常流程中关闭reader（会自动关闭底层流）
             reader.close()
+            reader = None
         
         except Exception as e:
-            input_stream.close()
+            # 异常时记录错误，资源关闭交给finally块处理
             raise Exception(f"解析文件失败: {file_path}, 错误: {e}")
         
         finally:
+            # 修复P0问题：统一在finally块中关闭资源，避免重复关闭
+            # 如果reader未关闭，先关闭reader；否则直接关闭底层流
             try:
-                input_stream.close()
+                if reader is not None:
+                    reader.close()
+                elif codec is not None:
+                    # 使用了压缩，关闭解压流（会自动关闭底层流）
+                    if input_stream is not None:
+                        input_stream.close()
+                else:
+                    # 未使用压缩，关闭原始流
+                    if raw_input_stream is not None:
+                        raw_input_stream.close()
             except:
                 pass
         
@@ -352,8 +389,9 @@ class EventLogParser:
             # 修复: 正确判断Stage状态 - 有Failure Reason则为FAILED，否则为SUCCEEDED
             stage_record['status'] = 'FAILED' if stage_info.get('Failure Reason') else 'SUCCEEDED'
             stage_record['num_failed_tasks'] = stage_info.get('Number of Failed Tasks', 0)
-            if stage_record['status'] == 'FAILED':
-                app_state.status = 'FAILED'
+            # 修复问题1: Stage失败不应该立即标记应用失败，因为Stage可以重试
+            # 应用状态应该由Job状态决定，而不是单个Stage的attempt状态
+            # 如果Stage重试成功，应用状态应该保持正确
             
             # 提取Task Metrics汇总
             task_metrics = stage_info.get('Task Metrics', {})

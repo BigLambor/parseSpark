@@ -6,20 +6,20 @@ hdfs:
   default_cluster: "cluster1"
   clusters:
     # 集群1配置
-    cluster1:
+    cluster_sanqier:
       # EventLog目录路径
       # 优先使用日期子目录结构：/spark-logs/2024-01-15/
       # 如果是扁平结构：/spark-logs/
-      event_log_dir: "/spark-logs"
+      event_log_dir: "hdfs://beh006/var/log/hadoop-spark"
       # 是否按日期子目录组织（推荐）
-      use_date_subdir: true
+      use_date_subdir: false
       # 日期目录格式：yyyy-MM-dd 或 yyyy/MM/dd
       date_dir_format: "yyyy-MM-dd"
     
     # 集群2配置
-    cluster2:
-      event_log_dir: "/spark-logs"
-      use_date_subdir: false
+    #cluster_sanqiyi:
+    #  event_log_dir: "hdfs://spark2-history/"
+    #  use_date_subdir: false
 
 # Hive配置
 hive:

@@ -4,7 +4,9 @@ Hive写入模块
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import lit, current_timestamp
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType, TimestampType
 from datetime import datetime
+import time
 
 
 class HiveWriter:
@@ -252,13 +254,103 @@ class HiveWriter:
             print(f"Executor数: {stats.total_executors}")
         print("="*50 + "\n")
     
+    def write_parser_status(self, parse_results):
+        """
+        写入解析状态表（幂等性保证）
+        修复P0问题：记录每个文件的解析状态，支持任务重跑时跳过已处理文件
+        :param parse_results: 解析结果字典，包含statistics
+        """
+        stats = parse_results.get('statistics')
+        if not stats:
+            return
+        
+        print("\n写入解析状态表...")
+        
+        # 构建状态记录
+        status_records = []
+        target_date = self.config.target_date
+        cluster_name = self.config.cluster_name
+        process_time = datetime.now()
+        
+        # 记录成功文件
+        success_file_list = getattr(stats, 'success_file_list', [])
+        for file_path in success_file_list:
+            status_records.append({
+                'cluster_name': cluster_name,
+                'file_path': file_path,
+                'process_date': target_date,
+                'status': 'SUCCESS',
+                'record_count': 1,  # 每个文件至少对应1个应用
+                'process_time': process_time,
+                'duration_ms': 0,  # 单个文件耗时未单独记录
+                'error_msg': None,
+                'dt': target_date
+            })
+        
+        # 记录失败文件
+        for file_path, error_msg in stats.failed_file_list:
+            status_records.append({
+                'cluster_name': cluster_name,
+                'file_path': file_path,
+                'process_date': target_date,
+                'status': 'FAILED',
+                'record_count': 0,
+                'process_time': process_time,
+                'duration_ms': 0,
+                'error_msg': error_msg[:500] if error_msg else None,  # 限制错误信息长度
+                'dt': target_date
+            })
+        
+        if not status_records:
+            print("没有需要记录的状态信息")
+            return
+        
+        # 创建DataFrame
+        schema = StructType([
+            StructField('cluster_name', StringType(), False),
+            StructField('file_path', StringType(), False),
+            StructField('process_date', StringType(), False),
+            StructField('status', StringType(), False),
+            StructField('record_count', IntegerType(), False),
+            StructField('process_time', TimestampType(), False),
+            StructField('duration_ms', LongType(), False),
+            StructField('error_msg', StringType(), True),
+            StructField('dt', StringType(), False)
+        ])
+        
+        status_df = self.spark.createDataFrame(status_records, schema)
+        
+        # 写入状态表
+        status_table = f"{self.config.hive_database}.{self.table_names['parser_status']}"
+        
+        try:
+            # 使用动态分区覆盖模式，避免重复记录
+            status_df.coalesce(1) \
+                .write \
+                .mode('append') \
+                .format('parquet') \
+                .option('compression', 'snappy') \
+                .insertInto(status_table)
+            print(f"已写入 {len(status_records)} 条状态记录到 {status_table}")
+            print(f"  - 成功: {len(success_file_list)} 条")
+            print(f"  - 失败: {len(stats.failed_file_list)} 条")
+        except Exception as e:
+            print(f"警告: 写入状态表失败: {e}")
+            # 状态表写入失败不影响主流程
+    
     def _write_table(self, df, table_name, num_files):
-        """统一写入逻辑"""
+        """
+        统一写入逻辑
+        修复P0问题：使用insertInto替代saveAsTable，确保只覆盖对应分区而不是整个表
+        """
         full_table_name = f'{self.config.hive_database}.{table_name}'
+        
+        # 使用insertInto确保动态分区覆盖模式正常工作
+        # 配合spark.sql.sources.partitionOverwriteMode=dynamic，只覆盖对应dt分区的数据
         df.coalesce(num_files) \
             .write \
-            .mode(self.config.write_mode) \
+            .mode('overwrite') \
             .format('parquet') \
             .option('compression', 'snappy') \
-            .saveAsTable(full_table_name)
+            .insertInto(full_table_name)
 

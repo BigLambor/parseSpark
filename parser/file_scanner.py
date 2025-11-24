@@ -13,6 +13,7 @@ class FileScanner:
     def scan(spark, config):
         """
         扫描HDFS目录，获取待解析的文件列表
+        修复P0问题：添加幂等性保证，过滤已处理的文件
         :param spark: SparkSession对象
         :param config: ParserConfig配置对象
         :return: 文件路径列表
@@ -45,8 +46,60 @@ class FileScanner:
             print(f"按修改时间过滤目录: {config.event_log_dir}")
             files = FileScanner._scan_and_filter(fs, log_dir_path, config)
         
-        print(f"扫描完成，找到 {len(files)} 个文件")
+        # 修复P0问题：过滤已处理的文件（幂等性保证）
+        files = FileScanner.filter_processed_files(spark, files, config)
+        
+        print(f"扫描完成，找到 {len(files)} 个待处理文件")
         return files
+    
+    @staticmethod
+    def filter_processed_files(spark, file_paths, config):
+        """
+        过滤已处理的文件（幂等性保证）
+        :param spark: SparkSession对象
+        :param file_paths: 文件路径列表
+        :param config: ParserConfig配置对象
+        :return: 过滤后的文件路径列表
+        """
+        if not file_paths:
+            return file_paths
+        
+        try:
+            status_table = f"{config.hive_database}.{config.hive_tables['parser_status']}"
+            
+            # 检查表是否存在
+            try:
+                spark.sql(f"SELECT 1 FROM {status_table} LIMIT 1").collect()
+            except Exception:
+                # 表不存在，返回所有文件
+                print(f"状态表 {status_table} 不存在，跳过幂等性检查")
+                return file_paths
+            
+            # 查询已成功处理的文件
+            processed_df = spark.sql(f"""
+                SELECT DISTINCT file_path 
+                FROM {status_table}
+                WHERE dt = '{config.target_date}' 
+                  AND cluster_name = '{config.cluster_name}'
+                  AND status = 'SUCCESS'
+            """)
+            
+            processed_files = {row.file_path for row in processed_df.collect()}
+            
+            if processed_files:
+                print(f"发现 {len(processed_files)} 个已处理文件，将跳过")
+            
+            filtered_files = [f for f in file_paths if f not in processed_files]
+            
+            if len(filtered_files) < len(file_paths):
+                print(f"过滤后剩余 {len(filtered_files)} 个文件待处理")
+            
+            return filtered_files
+            
+        except Exception as e:
+            # 查询失败，记录警告但继续处理所有文件
+            print(f"警告: 查询已处理文件失败，将处理所有文件: {e}")
+            return file_paths
     
     @staticmethod
     def _scan_directory(fs, dir_path, config):
