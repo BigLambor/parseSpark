@@ -6,6 +6,7 @@ import json
 from collections import defaultdict
 from models.app_metrics import AppMetrics, ExecutorMetrics
 from models.stage_metrics import StageMetrics, JobMetrics
+from models.sql_metrics import SQLMetrics, SparkConfigMetrics
 from parser.metrics_calculator import MetricsCalculator
 
 
@@ -39,6 +40,14 @@ class ApplicationState:
         
         # Executor级别
         self.executors = {}  # executor_id -> executor_info
+        
+        # SQL执行级别
+        self.sql_executions = {}  # execution_id -> sql_info
+        
+        # Spark配置参数
+        self.spark_configs = {}  # config_key -> config_value
+        self.system_properties = {}  # system_property_key -> property_value
+        self.java_properties = {}  # java_property_key -> property_value
     
     def to_app_metrics(self):
         """转换为应用指标"""
@@ -165,6 +174,81 @@ class ApplicationState:
             executor_metrics_list.append(executor_metrics)
         
         return executor_metrics_list
+    
+    def to_sql_metrics(self):
+        """转换为SQL指标列表"""
+        sql_metrics_list = []
+        
+        for execution_id, sql_info in self.sql_executions.items():
+            # 获取时间，确保不为None
+            start_time = sql_info.get('start_time') or 0
+            end_time = sql_info.get('end_time')
+            
+            duration_ms = MetricsCalculator.calculate_duration(start_time, end_time)
+            
+            # 将job_ids列表转换为JSON字符串
+            job_ids_str = json.dumps(sql_info.get('job_ids') or [])
+            
+            sql_metrics = SQLMetrics(
+                cluster_name=self.cluster_name,
+                app_id=self.app_id or 'unknown',
+                execution_id=execution_id,
+                sql_text=sql_info.get('sql_text') or '',
+                description=sql_info.get('description'),
+                physical_plan_description=sql_info.get('physical_plan_description'),
+                start_time=start_time,
+                end_time=end_time,
+                duration_ms=duration_ms,
+                job_ids=job_ids_str,
+                status=sql_info.get('status') or 'UNKNOWN',
+                error_message=sql_info.get('error_message'),
+                dt=self.target_date
+            )
+            sql_metrics_list.append(sql_metrics)
+        
+        return sql_metrics_list
+    
+    def to_config_metrics(self):
+        """转换为配置指标列表"""
+        config_metrics_list = []
+        
+        # Spark配置参数
+        for config_key, config_value in self.spark_configs.items():
+            config_metrics = SparkConfigMetrics(
+                cluster_name=self.cluster_name,
+                app_id=self.app_id or 'unknown',
+                config_key=config_key,
+                config_value=str(config_value),
+                config_category='spark',
+                dt=self.target_date
+            )
+            config_metrics_list.append(config_metrics)
+        
+        # 系统属性
+        for prop_key, prop_value in self.system_properties.items():
+            config_metrics = SparkConfigMetrics(
+                cluster_name=self.cluster_name,
+                app_id=self.app_id or 'unknown',
+                config_key=prop_key,
+                config_value=str(prop_value),
+                config_category='system',
+                dt=self.target_date
+            )
+            config_metrics_list.append(config_metrics)
+        
+        # Java属性
+        for prop_key, prop_value in self.java_properties.items():
+            config_metrics = SparkConfigMetrics(
+                cluster_name=self.cluster_name,
+                app_id=self.app_id or 'unknown',
+                config_key=prop_key,
+                config_value=str(prop_value),
+                config_category='java',
+                dt=self.target_date
+            )
+            config_metrics_list.append(config_metrics)
+        
+        return config_metrics_list
 
 
 class EventLogParser:
@@ -282,7 +366,9 @@ class EventLogParser:
             'app': app_state.to_app_metrics(),
             'jobs': app_state.to_job_metrics(),
             'stages': app_state.to_stage_metrics(),
-            'executors': app_state.to_executor_metrics()
+            'executors': app_state.to_executor_metrics(),
+            'sql_executions': app_state.to_sql_metrics(),
+            'spark_configs': app_state.to_config_metrics()
         }
     
     @staticmethod
@@ -312,6 +398,20 @@ class EventLogParser:
             # 记录Stage到Job的映射
             for stage_id in event.get('Stage IDs', []):
                 app_state.stage_to_job[stage_id] = job_id
+            
+            # 建立 SQL 执行与 Job 的关联
+            # Spark SQL 通过 Properties 中的 spark.sql.execution.id 关联 Job
+            properties = event.get('Properties', {})
+            if properties:
+                sql_execution_id = properties.get('spark.sql.execution.id')
+                if sql_execution_id is not None:
+                    try:
+                        exec_id = int(sql_execution_id)
+                        if exec_id in app_state.sql_executions:
+                            if job_id not in app_state.sql_executions[exec_id]['job_ids']:
+                                app_state.sql_executions[exec_id]['job_ids'].append(job_id)
+                    except (ValueError, TypeError):
+                        pass
         
         elif event_type == 'SparkListenerJobEnd':
             job_id = event.get('Job ID')
@@ -471,4 +571,170 @@ class EventLogParser:
             executor_id = event.get('Executor ID')
             if executor_id in app_state.executors:
                 app_state.executors[executor_id]['remove_time'] = event.get('Timestamp')
+        
+        elif event_type == 'SparkListenerEnvironmentUpdate':
+            # 处理环境更新事件，提取Spark配置参数
+            environment_info = event.get('Environment Update', {})
+            if not environment_info:
+                environment_info = event
+            
+            # 辅助函数：解析属性（兼容列表和字典两种格式）
+            def parse_properties(props):
+                """解析属性，兼容列表格式和字典格式"""
+                result = {}
+                if not props:
+                    return result
+                if isinstance(props, dict):
+                    # 字典格式: {"key1": "value1", "key2": "value2"}
+                    for key, value in props.items():
+                        result[key] = value
+                elif isinstance(props, list):
+                    # 列表格式: [["key1", "value1"], ["key2", "value2"]]
+                    for item in props:
+                        if isinstance(item, (list, tuple)) and len(item) >= 2:
+                            result[item[0]] = item[1]
+                return result
+            
+            # Spark配置参数
+            spark_properties = environment_info.get('Spark Properties', [])
+            parsed_spark_props = parse_properties(spark_properties)
+            for key, value in parsed_spark_props.items():
+                app_state.spark_configs[key] = value
+            
+            # 系统属性（排除java.*开头的属性，避免重复存储）
+            system_properties = environment_info.get('System Properties', [])
+            parsed_system_props = parse_properties(system_properties)
+            for key, value in parsed_system_props.items():
+                if not key.startswith('java.'):
+                    app_state.system_properties[key] = value
+            
+            # Java属性（单独存储java.*开头的属性）
+            for key, value in parsed_system_props.items():
+                if key.startswith('java.'):
+                    app_state.java_properties[key] = value
+        
+        elif event_type == 'SparkListenerSQLExecutionStart':
+            # 处理SQL执行开始事件
+            # 兼容不同Spark版本的字段名
+            execution_id = (event.get('executionId') or 
+                          event.get('Execution ID') or 
+                          event.get('execution_id'))
+            if execution_id is None:
+                return
+            
+            # 统一转换为整数类型
+            try:
+                execution_id = int(execution_id)
+            except (ValueError, TypeError):
+                return  # 无法转换则跳过
+            
+            # 提取SQL文本（优先顺序：sqlText > description > physicalPlanDescription）
+            sql_text = (event.get('sqlText') or 
+                        event.get('SQL Text') or 
+                        event.get('sql') or
+                        None)
+            
+            description = event.get('description') or ''
+            
+            # 提取物理执行计划描述（如果存在）
+            physical_plan = (event.get('physicalPlanDescription') or 
+                            event.get('Physical Plan Description') or
+                            event.get('physicalPlan') or
+                            '')
+            
+            # 如果sql_text为None或空字符串，使用description作为fallback
+            # 但优先使用非空的sql_text
+            final_sql_text = sql_text if (sql_text and sql_text.strip()) else (description if description else '')
+            
+            # 获取开始时间，确保不为None
+            start_time = (event.get('timestamp') or 
+                         event.get('time') or 
+                         event.get('Timestamp'))
+            
+            app_state.sql_executions[execution_id] = {
+                'execution_id': execution_id,
+                'sql_text': final_sql_text,
+                'description': description,
+                'physical_plan_description': physical_plan,
+                'start_time': start_time or 0,
+                'end_time': None,
+                'job_ids': [],
+                'status': 'RUNNING',
+                'error_message': None
+            }
+        
+        elif event_type == 'SparkListenerSQLExecutionEnd':
+            # 处理SQL执行结束事件
+            # 兼容不同Spark版本的字段名
+            execution_id = (event.get('executionId') or 
+                          event.get('Execution ID') or
+                          event.get('execution_id'))
+            if execution_id is None:
+                return
+            
+            # 统一转换为整数类型
+            try:
+                execution_id = int(execution_id)
+            except (ValueError, TypeError):
+                return  # 无法转换则跳过
+            
+            # 如果缺少开始事件，创建一个不完整的记录（EventLog可能不完整）
+            if execution_id not in app_state.sql_executions:
+                # 尝试从结束事件中提取基本信息
+                sql_text = (event.get('sqlText') or 
+                           event.get('SQL Text') or 
+                           event.get('sql') or 
+                           event.get('description') or 
+                           '')
+                app_state.sql_executions[execution_id] = {
+                    'execution_id': execution_id,
+                    'sql_text': sql_text,
+                    'description': event.get('description') or '',
+                    'physical_plan_description': '',
+                    'start_time': 0,  # 未知开始时间
+                    'end_time': None,
+                    'job_ids': [],
+                    'status': 'UNKNOWN',
+                    'error_message': None
+                }
+            
+            sql_info = app_state.sql_executions[execution_id]
+            sql_info['end_time'] = (event.get('timestamp') or 
+                                   event.get('time') or 
+                                   event.get('Timestamp'))
+            
+            # 判断执行状态
+            error = (event.get('error') or 
+                    event.get('Error') or
+                    event.get('exception') or
+                    event.get('Exception'))
+            if error:
+                sql_info['status'] = 'FAILED'
+                # 提取错误信息
+                if isinstance(error, dict):
+                    error_msg = error.get('message') or error.get('Message') or str(error)
+                else:
+                    error_msg = str(error)
+                sql_info['error_message'] = error_msg[:1000]  # 限制错误信息长度
+            else:
+                sql_info['status'] = 'SUCCEEDED'
+            
+            # 提取关联的Job IDs（如果在结束事件中存在）
+            # 注意：大部分情况下 job_ids 已在 SparkListenerJobStart 中关联
+            job_ids = (event.get('jobIds') or 
+                      event.get('Job IDs') or
+                      event.get('job_ids') or
+                      None)
+            if job_ids is not None:
+                # 合并已有的job_ids，避免覆盖
+                existing_job_ids = set(sql_info.get('job_ids', []))
+                if isinstance(job_ids, list):
+                    existing_job_ids.update(job_ids)
+                elif isinstance(job_ids, (int, str)):
+                    existing_job_ids.add(job_ids)
+                elif hasattr(job_ids, '__iter__'):
+                    existing_job_ids.update(job_ids)
+                else:
+                    existing_job_ids.add(job_ids)
+                sql_info['job_ids'] = list(existing_job_ids)
 

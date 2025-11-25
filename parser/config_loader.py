@@ -48,6 +48,8 @@ class ParserConfig:
             'stages': 'spark_stages',
             'executors': 'spark_executors',
             'diagnosis': 'spark_diagnosis',
+            'sql_executions': 'spark_sql_executions',
+            'spark_configs': 'spark_configs',
             'parser_status': 'spark_parser_status'
         }
         self.hive_tables = {**tables_default, **hive_config.get('tables', {})}

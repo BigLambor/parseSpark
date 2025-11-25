@@ -220,6 +220,92 @@ class HiveWriter:
         
         print("Executor数据写入完成")
     
+    def write_sql_executions(self, sql_metrics_source):
+        """
+        写入SQL执行表
+        :param sql_metrics_source: SQLMetrics对象列表或RDD
+        """
+        from pyspark import RDD
+        
+        if isinstance(sql_metrics_source, RDD):
+            if sql_metrics_source.isEmpty():
+                print("SQL执行数据为空，跳过写入")
+                return
+            
+            print(f"准备从RDD写入SQL执行数据...")
+            df = self.spark.createDataFrame(
+                sql_metrics_source.map(lambda x: x.to_dict())
+            )
+        else:
+            if not sql_metrics_source:
+                print("SQL执行数据为空，跳过写入")
+                return
+            
+            print(f"准备写入 {len(sql_metrics_source)} 条SQL执行数据...")
+            data = [sql.to_dict() for sql in sql_metrics_source]
+            df = self.spark.createDataFrame(data)
+        
+        # 添加创建时间
+        df = df.withColumn('create_time', current_timestamp())
+        
+        # 去重
+        df = df.dropDuplicates(['cluster_name', 'app_id', 'execution_id', 'dt'])
+        
+        # 计算输出文件数量
+        record_count = df.count()
+        num_files = max(int(record_count / 100000), 1)
+        num_files = min(num_files, 20)
+        
+        print(f"实际写入 {record_count} 条，输出 {num_files} 个文件")
+        
+        # 写入Hive表
+        self._write_table(df, self.table_names['sql_executions'], num_files)
+        
+        print("SQL执行数据写入完成")
+    
+    def write_spark_configs(self, config_metrics_source):
+        """
+        写入Spark配置表
+        :param config_metrics_source: SparkConfigMetrics对象列表或RDD
+        """
+        from pyspark import RDD
+        
+        if isinstance(config_metrics_source, RDD):
+            if config_metrics_source.isEmpty():
+                print("Spark配置数据为空，跳过写入")
+                return
+            
+            print(f"准备从RDD写入Spark配置数据...")
+            df = self.spark.createDataFrame(
+                config_metrics_source.map(lambda x: x.to_dict())
+            )
+        else:
+            if not config_metrics_source:
+                print("Spark配置数据为空，跳过写入")
+                return
+            
+            print(f"准备写入 {len(config_metrics_source)} 条Spark配置数据...")
+            data = [config.to_dict() for config in config_metrics_source]
+            df = self.spark.createDataFrame(data)
+        
+        # 添加创建时间
+        df = df.withColumn('create_time', current_timestamp())
+        
+        # 去重（同一个app_id的同一个配置键只保留一条）
+        df = df.dropDuplicates(['cluster_name', 'app_id', 'config_key', 'dt'])
+        
+        # 计算输出文件数量
+        record_count = df.count()
+        num_files = max(int(record_count / 100000), 1)
+        num_files = min(num_files, 20)
+        
+        print(f"实际写入 {record_count} 条，输出 {num_files} 个文件")
+        
+        # 写入Hive表
+        self._write_table(df, self.table_names['spark_configs'], num_files)
+        
+        print("Spark配置数据写入完成")
+    
     def write_all(self, parse_results):
         """
         写入所有数据
@@ -235,12 +321,16 @@ class HiveWriter:
         all_jobs = parse_results.get('jobs_rdd', parse_results.get('jobs', []))
         all_stages = parse_results.get('stages_rdd', parse_results.get('stages', []))
         all_executors = parse_results.get('executors_rdd', parse_results.get('executors', []))
+        all_sql_executions = parse_results.get('sql_executions_rdd', parse_results.get('sql_executions', []))
+        all_spark_configs = parse_results.get('spark_configs_rdd', parse_results.get('spark_configs', []))
         
         # 写入各表（现在支持RDD和列表）
         self.write_applications(all_apps)
         self.write_jobs(all_jobs)
         self.write_stages(all_stages)
         self.write_executors(all_executors)
+        self.write_sql_executions(all_sql_executions)
+        self.write_spark_configs(all_spark_configs)
         
         # 获取统计信息
         stats = parse_results.get('statistics')
@@ -252,6 +342,8 @@ class HiveWriter:
             print(f"Job数: {stats.total_jobs}")
             print(f"Stage数: {stats.total_stages}")
             print(f"Executor数: {stats.total_executors}")
+            print(f"SQL执行数: {getattr(stats, 'total_sql_executions', 0)}")
+            print(f"Spark配置数: {getattr(stats, 'total_spark_configs', 0)}")
         print("="*50 + "\n")
     
     def write_parser_status(self, parse_results):

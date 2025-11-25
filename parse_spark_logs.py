@@ -32,6 +32,8 @@ class ParseStatistics:
         self.total_jobs = 0
         self.total_stages = 0
         self.total_executors = 0
+        self.total_sql_executions = 0
+        self.total_spark_configs = 0
         self.failed_file_list = []
         self.success_file_list = []  # 修复P0问题：添加成功文件列表
     
@@ -64,6 +66,8 @@ class ParseStatistics:
         print(f"Job数: {self.total_jobs}")
         print(f"Stage数: {self.total_stages}")
         print(f"Executor数: {self.total_executors}")
+        print(f"SQL执行数: {self.total_sql_executions}")
+        print(f"Spark配置数: {self.total_spark_configs}")
         print(f"-" * 60)
         print(f"执行时长: {duration:.2f} 秒")
         print(f"平均速度: {self.success_files / max(duration, 1):.2f} 文件/秒")
@@ -169,12 +173,16 @@ def parse_eventlogs(spark, config):
     jobs_rdd = success_rdd.flatMap(lambda x: x[2]['jobs'])
     stages_rdd = success_rdd.flatMap(lambda x: x[2]['stages'])
     executors_rdd = success_rdd.flatMap(lambda x: x[2]['executors'])
+    sql_executions_rdd = success_rdd.flatMap(lambda x: x[2].get('sql_executions', []))
+    spark_configs_rdd = success_rdd.flatMap(lambda x: x[2].get('spark_configs', []))
     
     # 计算统计信息（只collect数量，不collect数据）
     stats.total_apps = apps_rdd.count()
     stats.total_jobs = jobs_rdd.count()
     stats.total_stages = stages_rdd.count()
     stats.total_executors = executors_rdd.count()
+    stats.total_sql_executions = sql_executions_rdd.count()
+    stats.total_spark_configs = spark_configs_rdd.count()
     
     # 打印统计
     stats.print_summary()
@@ -185,6 +193,8 @@ def parse_eventlogs(spark, config):
         'jobs_rdd': jobs_rdd,
         'stages_rdd': stages_rdd,
         'executors_rdd': executors_rdd,
+        'sql_executions_rdd': sql_executions_rdd,
+        'spark_configs_rdd': spark_configs_rdd,
         'statistics': stats,
         'parse_results_rdd': parse_results_rdd  # 保留原始RDD以便需要时使用
     }

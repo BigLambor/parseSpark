@@ -101,25 +101,6 @@ spark-submit \
   parse_spark_logs.py
 ```
 
-#### 方式3：Airflow调度（生产环境）
-
-参考 `airflow/spark_parser_dag.py` 配置DAG：
-
-```python
-from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-
-parse_task = SparkSubmitOperator(
-    task_id='parse_cluster1',
-    application='/path/to/parse_spark_logs.py',
-    py_files='/path/to/parser.zip,/path/to/models.zip,/path/to/utils.zip',
-    conf={
-        'spark.app.cluster_name': 'cluster1',
-        'spark.app.target_date': '{{ ds }}',
-    },
-    ...
-)
-```
-
 ## 📊 架构设计
 
 ### 核心架构
@@ -339,30 +320,3 @@ SELECT * FROM (
   FROM meta.spark_applications WHERE dt='2024-01-15'
 ) t WHERE rn = 1;
 ```
-
-## 📚 文档
-
-- [详细设计文档](./Spark作业解析方案设计.md) - 完整的技术方案设计
-- [优化总结](./方案优化总结.md) - 优化建议和最佳实践
-- [配置文件示例](./config.yaml.example) - 配置文件模板
-
-## 🤝 贡献
-
-欢迎提交Issue和Pull Request！
-
-## 📄 License
-
-MIT License
-
-## 🔗 相关项目
-
-- [Spark官方文档](https://spark.apache.org/docs/latest/)
-- [Spark History Server](https://spark.apache.org/docs/latest/monitoring.html)
-- [Dr.Elephant](https://github.com/linkedin/dr-elephant) - LinkedIn开源的Spark性能分析工具
-- [Sparklint](https://github.com/groupon/sparklint) - Groupon开源的Spark性能分析工具
-
----
-
-**维护者**: Data Platform Team  
-**最后更新**: 2024-01-15
-

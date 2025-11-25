@@ -143,7 +143,52 @@ TBLPROPERTIES (
 );
 
 -- =====================================================
--- 6. 解析状态表（spark_parser_status）
+-- 6. SQL执行表（spark_sql_executions）
+-- =====================================================
+CREATE EXTERNAL TABLE IF NOT EXISTS spark_sql_executions (
+    cluster_name STRING COMMENT '集群名称',
+    app_id STRING COMMENT '应用ID',
+    execution_id INT COMMENT 'SQL执行ID',
+    sql_text STRING COMMENT 'SQL语句文本',
+    description STRING COMMENT 'SQL描述',
+    physical_plan_description STRING COMMENT '物理执行计划描述',
+    start_time BIGINT COMMENT '开始时间（时间戳，毫秒）',
+    end_time BIGINT COMMENT '结束时间（时间戳，毫秒）',
+    duration_ms BIGINT COMMENT '执行时长（毫秒）',
+    job_ids STRING COMMENT '关联的Job IDs（JSON数组字符串）',
+    status STRING COMMENT '状态：SUCCEEDED, FAILED',
+    error_message STRING COMMENT '错误信息（如果失败）',
+    create_time TIMESTAMP COMMENT '记录创建时间'
+) 
+COMMENT 'Spark SQL执行记录'
+PARTITIONED BY (dt STRING COMMENT '分区日期，格式：YYYY-MM-DD')
+STORED AS PARQUET
+LOCATION '/warehouse/meta/spark_sql_executions'
+TBLPROPERTIES (
+    'parquet.compress'='SNAPPY'
+);
+
+-- =====================================================
+-- 7. Spark配置参数表（spark_configs）
+-- =====================================================
+CREATE EXTERNAL TABLE IF NOT EXISTS spark_configs (
+    cluster_name STRING COMMENT '集群名称',
+    app_id STRING COMMENT '应用ID',
+    config_key STRING COMMENT '配置键',
+    config_value STRING COMMENT '配置值',
+    config_category STRING COMMENT '配置类别：spark, system, java',
+    create_time TIMESTAMP COMMENT '记录创建时间'
+) 
+COMMENT 'Spark应用配置参数'
+PARTITIONED BY (dt STRING COMMENT '分区日期，格式：YYYY-MM-DD')
+STORED AS PARQUET
+LOCATION '/warehouse/meta/spark_configs'
+TBLPROPERTIES (
+    'parquet.compress'='SNAPPY'
+);
+
+-- =====================================================
+-- 8. 解析状态表（spark_parser_status）
 -- =====================================================
 CREATE EXTERNAL TABLE IF NOT EXISTS spark_parser_status (
     cluster_name STRING COMMENT '集群名称',
@@ -164,7 +209,7 @@ TBLPROPERTIES (
 );
 
 -- =====================================================
--- 7. Task表（可选，仅在需要时创建）
+-- 9. Task表（可选，仅在需要时创建）
 -- =====================================================
 -- 注意：Task级别数据量巨大，建议默认不创建和解析
 -- 如果需要详细的Task分析，可以取消下面的注释
@@ -269,6 +314,8 @@ UNION ALL SELECT '  2. spark_jobs            - Job指标' as msg
 UNION ALL SELECT '  3. spark_stages          - Stage指标' as msg
 UNION ALL SELECT '  4. spark_executors       - Executor信息' as msg
 UNION ALL SELECT '  5. spark_diagnosis       - 诊断建议' as msg
-UNION ALL SELECT '  6. spark_parser_status   - 解析状态' as msg
+UNION ALL SELECT '  6. spark_sql_executions  - SQL执行记录' as msg
+UNION ALL SELECT '  7. spark_configs         - Spark配置参数' as msg
+UNION ALL SELECT '  8. spark_parser_status   - 解析状态' as msg
 UNION ALL SELECT '====================================' as msg;
 
