@@ -4,15 +4,14 @@
 
 -- 创建数据库（如果不存在）
 CREATE DATABASE IF NOT EXISTS meta
-COMMENT 'Spark EventLog解析元数据库'
-LOCATION '/warehouse/meta';
+COMMENT 'Spark EventLog解析元数据库';
 
 USE meta;
 
 -- =====================================================
 -- 1. 应用表（spark_applications）
 -- =====================================================
-CREATE EXTERNAL TABLE IF NOT EXISTS spark_applications (
+CREATE TABLE IF NOT EXISTS spark_applications (
     cluster_name STRING COMMENT '集群名称',
     app_id STRING COMMENT '应用ID',
     app_name STRING COMMENT '应用名称',
@@ -30,7 +29,6 @@ CREATE EXTERNAL TABLE IF NOT EXISTS spark_applications (
 COMMENT 'Spark应用级别指标'
 PARTITIONED BY (dt STRING COMMENT '分区日期，格式：YYYY-MM-DD')
 STORED AS PARQUET
-LOCATION '/warehouse/meta/spark_applications'
 TBLPROPERTIES (
     'parquet.compress'='SNAPPY',
     'parquet.block.size'='268435456'
@@ -39,7 +37,7 @@ TBLPROPERTIES (
 -- =====================================================
 -- 2. Job表（spark_jobs）
 -- =====================================================
-CREATE EXTERNAL TABLE IF NOT EXISTS spark_jobs (
+CREATE TABLE IF NOT EXISTS spark_jobs (
     cluster_name STRING COMMENT '集群名称',
     app_id STRING COMMENT '应用ID',
     job_id INT COMMENT 'Job ID',
@@ -53,7 +51,6 @@ CREATE EXTERNAL TABLE IF NOT EXISTS spark_jobs (
 COMMENT 'Spark Job级别指标'
 PARTITIONED BY (dt STRING COMMENT '分区日期，格式：YYYY-MM-DD')
 STORED AS PARQUET
-LOCATION '/warehouse/meta/spark_jobs'
 TBLPROPERTIES (
     'parquet.compress'='SNAPPY'
 );
@@ -61,7 +58,7 @@ TBLPROPERTIES (
 -- =====================================================
 -- 3. Stage表（spark_stages）
 -- =====================================================
-CREATE EXTERNAL TABLE IF NOT EXISTS spark_stages (
+CREATE TABLE IF NOT EXISTS spark_stages (
     cluster_name STRING COMMENT '集群名称',
     app_id STRING COMMENT '应用ID',
     job_id INT COMMENT 'Job ID',
@@ -94,7 +91,6 @@ CREATE EXTERNAL TABLE IF NOT EXISTS spark_stages (
 COMMENT 'Spark Stage级别指标（包含聚合统计）'
 PARTITIONED BY (dt STRING COMMENT '分区日期，格式：YYYY-MM-DD')
 STORED AS PARQUET
-LOCATION '/warehouse/meta/spark_stages'
 TBLPROPERTIES (
     'parquet.compress'='SNAPPY'
 );
@@ -102,7 +98,7 @@ TBLPROPERTIES (
 -- =====================================================
 -- 4. Executor表（spark_executors）
 -- =====================================================
-CREATE EXTERNAL TABLE IF NOT EXISTS spark_executors (
+CREATE TABLE IF NOT EXISTS spark_executors (
     cluster_name STRING COMMENT '集群名称',
     app_id STRING COMMENT '应用ID',
     executor_id STRING COMMENT 'Executor ID',
@@ -116,7 +112,6 @@ CREATE EXTERNAL TABLE IF NOT EXISTS spark_executors (
 COMMENT 'Spark Executor信息'
 PARTITIONED BY (dt STRING COMMENT '分区日期，格式：YYYY-MM-DD')
 STORED AS PARQUET
-LOCATION '/warehouse/meta/spark_executors'
 TBLPROPERTIES (
     'parquet.compress'='SNAPPY'
 );
@@ -124,7 +119,7 @@ TBLPROPERTIES (
 -- =====================================================
 -- 5. 诊断建议表（spark_diagnosis）
 -- =====================================================
-CREATE EXTERNAL TABLE IF NOT EXISTS spark_diagnosis (
+CREATE TABLE IF NOT EXISTS spark_diagnosis (
     cluster_name STRING COMMENT '集群名称',
     app_id STRING COMMENT '应用ID',
     rule_id STRING COMMENT '规则ID',
@@ -137,7 +132,6 @@ CREATE EXTERNAL TABLE IF NOT EXISTS spark_diagnosis (
 COMMENT 'Spark作业诊断建议'
 PARTITIONED BY (dt STRING COMMENT '分区日期，格式：YYYY-MM-DD')
 STORED AS PARQUET
-LOCATION '/warehouse/meta/spark_diagnosis'
 TBLPROPERTIES (
     'parquet.compress'='SNAPPY'
 );
@@ -145,7 +139,7 @@ TBLPROPERTIES (
 -- =====================================================
 -- 6. SQL执行表（spark_sql_executions）
 -- =====================================================
-CREATE EXTERNAL TABLE IF NOT EXISTS spark_sql_executions (
+CREATE TABLE IF NOT EXISTS spark_sql_executions (
     cluster_name STRING COMMENT '集群名称',
     app_id STRING COMMENT '应用ID',
     execution_id INT COMMENT 'SQL执行ID',
@@ -163,7 +157,6 @@ CREATE EXTERNAL TABLE IF NOT EXISTS spark_sql_executions (
 COMMENT 'Spark SQL执行记录'
 PARTITIONED BY (dt STRING COMMENT '分区日期，格式：YYYY-MM-DD')
 STORED AS PARQUET
-LOCATION '/warehouse/meta/spark_sql_executions'
 TBLPROPERTIES (
     'parquet.compress'='SNAPPY'
 );
@@ -171,7 +164,7 @@ TBLPROPERTIES (
 -- =====================================================
 -- 7. Spark配置参数表（spark_configs）
 -- =====================================================
-CREATE EXTERNAL TABLE IF NOT EXISTS spark_configs (
+CREATE TABLE IF NOT EXISTS spark_configs (
     cluster_name STRING COMMENT '集群名称',
     app_id STRING COMMENT '应用ID',
     config_key STRING COMMENT '配置键',
@@ -182,7 +175,6 @@ CREATE EXTERNAL TABLE IF NOT EXISTS spark_configs (
 COMMENT 'Spark应用配置参数'
 PARTITIONED BY (dt STRING COMMENT '分区日期，格式：YYYY-MM-DD')
 STORED AS PARQUET
-LOCATION '/warehouse/meta/spark_configs'
 TBLPROPERTIES (
     'parquet.compress'='SNAPPY'
 );
@@ -190,7 +182,7 @@ TBLPROPERTIES (
 -- =====================================================
 -- 8. 解析状态表（spark_parser_status）
 -- =====================================================
-CREATE EXTERNAL TABLE IF NOT EXISTS spark_parser_status (
+CREATE TABLE IF NOT EXISTS spark_parser_status (
     cluster_name STRING COMMENT '集群名称',
     file_path STRING COMMENT 'EventLog文件路径',
     process_date STRING COMMENT '处理日期',
@@ -203,7 +195,6 @@ CREATE EXTERNAL TABLE IF NOT EXISTS spark_parser_status (
 COMMENT 'EventLog解析状态表（用于幂等性保证和断点续传）'
 PARTITIONED BY (dt STRING COMMENT '分区日期，格式：YYYY-MM-DD')
 STORED AS PARQUET
-LOCATION '/warehouse/meta/spark_parser_status'
 TBLPROPERTIES (
     'parquet.compress'='SNAPPY'
 );
@@ -215,7 +206,7 @@ TBLPROPERTIES (
 -- 如果需要详细的Task分析，可以取消下面的注释
 
 /*
-CREATE EXTERNAL TABLE IF NOT EXISTS spark_tasks (
+CREATE TABLE IF NOT EXISTS spark_tasks (
     cluster_name STRING COMMENT '集群名称',
     app_id STRING COMMENT '应用ID',
     stage_id INT COMMENT 'Stage ID',
@@ -236,7 +227,6 @@ CREATE EXTERNAL TABLE IF NOT EXISTS spark_tasks (
 COMMENT 'Spark Task级别详细指标（数据量大，谨慎使用）'
 PARTITIONED BY (dt STRING COMMENT '分区日期，格式：YYYY-MM-DD')
 STORED AS PARQUET
-LOCATION '/warehouse/meta/spark_tasks'
 TBLPROPERTIES (
     'parquet.compress'='SNAPPY'
 );
