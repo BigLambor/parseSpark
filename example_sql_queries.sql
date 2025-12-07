@@ -15,7 +15,7 @@ SELECT
     start_time,
     end_time
 FROM meta.spark_sql_executions
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
 ORDER BY start_time DESC
 LIMIT 20;
@@ -28,7 +28,7 @@ SELECT
     error_message,
     duration_ms / 1000.0 as duration_sec
 FROM meta.spark_sql_executions
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
   AND status = 'FAILED'
 ORDER BY start_time DESC;
@@ -41,7 +41,7 @@ SELECT
     duration_ms / 1000.0 / 60 as duration_minutes,
     status
 FROM meta.spark_sql_executions
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
 ORDER BY duration_ms DESC
 LIMIT 20;
@@ -55,7 +55,7 @@ SELECT
     AVG(duration_ms) / 1000.0 as avg_duration_sec,
     MAX(duration_ms) / 1000.0 as max_duration_sec
 FROM meta.spark_sql_executions
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
 GROUP BY app_id
 ORDER BY total_sql_executions DESC;
@@ -67,7 +67,7 @@ SELECT
     sql_text,
     duration_ms / 1000.0 as duration_sec
 FROM meta.spark_sql_executions
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
   AND sql_text LIKE '%INSERT%'  -- 查找包含INSERT的SQL
 ORDER BY start_time DESC;
@@ -82,7 +82,7 @@ SELECT
     config_value,
     config_category
 FROM meta.spark_configs
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
   AND app_id = 'application_1234567890_0001'
 ORDER BY config_category, config_key;
@@ -92,7 +92,7 @@ SELECT DISTINCT
     app_id,
     config_value
 FROM meta.spark_configs
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
   AND config_key = 'spark.sql.shuffle.partitions'
 ORDER BY app_id;
@@ -103,7 +103,7 @@ SELECT
     COUNT(DISTINCT app_id) as app_count,
     COUNT(*) as total_configs
 FROM meta.spark_configs
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
   AND config_category = 'spark'
 GROUP BY config_key
@@ -116,7 +116,7 @@ SELECT DISTINCT
     MAX(CASE WHEN config_key = 'spark.executor.memory' THEN config_value END) as executor_memory,
     MAX(CASE WHEN config_key = 'spark.driver.memory' THEN config_value END) as driver_memory
 FROM meta.spark_configs
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
   AND config_key IN ('spark.executor.memory', 'spark.driver.memory')
 GROUP BY app_id
@@ -128,7 +128,7 @@ SELECT DISTINCT
     app_id,
     config_value as partition_mode
 FROM meta.spark_configs
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
   AND config_key = 'spark.sql.sources.partitionOverwriteMode'
 ORDER BY app_id;
@@ -152,7 +152,7 @@ LEFT JOIN meta.spark_jobs j
     ON s.app_id = j.app_id 
     AND s.dt = j.dt 
     AND s.cluster_name = j.cluster_name
-WHERE s.dt = '2024-01-15' 
+WHERE s.dt = '2025-12-05' 
   AND s.cluster_name = 'cluster1'
 ORDER BY s.start_time DESC
 LIMIT 50;
@@ -179,7 +179,7 @@ LEFT JOIN meta.spark_configs c
     ON a.app_id = c.app_id 
     AND a.dt = c.dt 
     AND a.cluster_name = c.cluster_name
-WHERE a.dt = '2024-01-15' 
+WHERE a.dt = '2025-12-05' 
   AND a.cluster_name = 'cluster1'
 GROUP BY a.app_id, a.app_name, a.user, a.status, a.duration_ms
 ORDER BY a.start_time DESC
@@ -197,7 +197,7 @@ JOIN meta.spark_sql_executions s
     ON a.app_id = s.app_id 
     AND a.dt = s.dt 
     AND a.cluster_name = s.cluster_name
-WHERE a.dt = '2024-01-15' 
+WHERE a.dt = '2025-12-05' 
   AND a.cluster_name = 'cluster1'
 GROUP BY a.app_id, a.app_name, a.duration_ms
 HAVING sql_execution_count > 10

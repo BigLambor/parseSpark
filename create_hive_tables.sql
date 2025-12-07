@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS spark_applications (
     end_time BIGINT COMMENT '结束时间（时间戳，毫秒）',
     duration_ms BIGINT COMMENT '运行时长（毫秒）',
     status STRING COMMENT '状态：RUNNING, FINISHED, FAILED, KILLED',
-    user STRING COMMENT '用户',
+    app_user STRING COMMENT '用户',
     spark_version STRING COMMENT 'Spark版本',
     executor_count INT COMMENT 'Executor数量',
     total_cores INT COMMENT '总核心数',
@@ -205,7 +205,7 @@ TBLPROPERTIES (
 -- 注意：Task级别数据量巨大，建议默认不创建和解析
 -- 如果需要详细的Task分析，可以取消下面的注释
 
-/*
+
 CREATE TABLE IF NOT EXISTS spark_tasks (
     cluster_name STRING COMMENT '集群名称',
     app_id STRING COMMENT '应用ID',
@@ -230,7 +230,7 @@ STORED AS PARQUET
 TBLPROPERTIES (
     'parquet.compress'='SNAPPY'
 );
-*/
+
 
 -- =====================================================
 -- 创建常用视图
@@ -276,7 +276,7 @@ SELECT
     cluster_name,
     app_id,
     app_name,
-    user,
+    app_user,
     duration_ms,
     duration_ms / 1000 / 60 as duration_minutes,
     status,

@@ -20,17 +20,17 @@ class JobMetrics:
     dt: str
     
     def to_dict(self):
-        """转换为字典"""
+        """转换为字典，确保类型正确"""
         return {
-            'cluster_name': self.cluster_name,
-            'app_id': self.app_id,
-            'job_id': self.job_id,
-            'submission_time': self.submission_time,
-            'completion_time': self.completion_time,
-            'duration_ms': self.duration_ms,
-            'status': self.status,
-            'stage_count': self.stage_count,
-            'dt': self.dt
+            'cluster_name': str(self.cluster_name) if self.cluster_name else '',
+            'app_id': str(self.app_id) if self.app_id else '',
+            'job_id': int(self.job_id) if self.job_id is not None else 0,
+            'submission_time': int(self.submission_time) if self.submission_time is not None else None,
+            'completion_time': int(self.completion_time) if self.completion_time is not None else None,
+            'duration_ms': int(self.duration_ms) if self.duration_ms is not None else 0,
+            'status': str(self.status) if self.status else 'UNKNOWN',
+            'stage_count': int(self.stage_count) if self.stage_count is not None else 0,
+            'dt': str(self.dt) if self.dt else ''
         }
 
 
@@ -66,34 +66,34 @@ class StageMetrics:
     dt: str
     
     def to_dict(self):
-        """转换为字典"""
+        """转换为字典，确保类型正确"""
         return {
-            'cluster_name': self.cluster_name,
-            'app_id': self.app_id,
-            'job_id': self.job_id,
-            'stage_id': self.stage_id,
-            'stage_name': self.stage_name,
-            'submission_time': self.submission_time,
-            'completion_time': self.completion_time,
-            'duration_ms': self.duration_ms,
-            'status': self.status,
-            'input_bytes': self.input_bytes,
-            'input_records': self.input_records,
-            'output_bytes': self.output_bytes,
-            'output_records': self.output_records,
-            'shuffle_read_bytes': self.shuffle_read_bytes,
-            'shuffle_read_records': self.shuffle_read_records,
-            'shuffle_write_bytes': self.shuffle_write_bytes,
-            'shuffle_write_records': self.shuffle_write_records,
-            'num_tasks': self.num_tasks,
-            'num_failed_tasks': self.num_failed_tasks,
-            'task_duration_p50': self.task_duration_p50,
-            'task_duration_p75': self.task_duration_p75,
-            'task_duration_p95': self.task_duration_p95,
-            'task_duration_max': self.task_duration_max,
-            'skew_factor': self.skew_factor,
-            'input_skew_factor': self.input_skew_factor,
-            'peak_memory_max': self.peak_memory_max,
-            'dt': self.dt
+            'cluster_name': str(self.cluster_name) if self.cluster_name else '',
+            'app_id': str(self.app_id) if self.app_id else '',
+            'job_id': int(self.job_id) if self.job_id is not None else 0,
+            'stage_id': int(self.stage_id) if self.stage_id is not None else 0,
+            'stage_name': str(self.stage_name) if self.stage_name else '',
+            'submission_time': int(self.submission_time) if self.submission_time is not None else None,
+            'completion_time': int(self.completion_time) if self.completion_time is not None else None,
+            'duration_ms': int(self.duration_ms) if self.duration_ms is not None else 0,
+            'status': str(self.status) if self.status else 'UNKNOWN',
+            'input_bytes': int(self.input_bytes) if self.input_bytes is not None else 0,
+            'input_records': int(self.input_records) if self.input_records is not None else 0,
+            'output_bytes': int(self.output_bytes) if self.output_bytes is not None else 0,
+            'output_records': int(self.output_records) if self.output_records is not None else 0,
+            'shuffle_read_bytes': int(self.shuffle_read_bytes) if self.shuffle_read_bytes is not None else 0,
+            'shuffle_read_records': int(self.shuffle_read_records) if self.shuffle_read_records is not None else 0,
+            'shuffle_write_bytes': int(self.shuffle_write_bytes) if self.shuffle_write_bytes is not None else 0,
+            'shuffle_write_records': int(self.shuffle_write_records) if self.shuffle_write_records is not None else 0,
+            'num_tasks': int(self.num_tasks) if self.num_tasks is not None else 0,
+            'num_failed_tasks': int(self.num_failed_tasks) if self.num_failed_tasks is not None else 0,
+            'task_duration_p50': int(self.task_duration_p50) if self.task_duration_p50 is not None else 0,
+            'task_duration_p75': int(self.task_duration_p75) if self.task_duration_p75 is not None else 0,
+            'task_duration_p95': int(self.task_duration_p95) if self.task_duration_p95 is not None else 0,
+            'task_duration_max': int(self.task_duration_max) if self.task_duration_max is not None else 0,
+            'skew_factor': float(self.skew_factor) if self.skew_factor is not None else 0.0,
+            'input_skew_factor': float(self.input_skew_factor) if self.input_skew_factor is not None else 0.0,
+            'peak_memory_max': int(self.peak_memory_max) if self.peak_memory_max is not None else 0,
+            'dt': str(self.dt) if self.dt else ''
         }
 

@@ -71,10 +71,10 @@ hive -f create_hive_tables.sql
 ./submit_parser.sh cluster1
 
 # 解析指定日期
-./submit_parser.sh cluster1 2024-01-15
+./submit_parser.sh cluster1 2025-12-05
 
 # 自定义资源配置
-NUM_EXECUTORS=300 PARALLELISM=3000 ./submit_parser.sh cluster1 2024-01-15
+NUM_EXECUTORS=300 PARALLELISM=3000 ./submit_parser.sh cluster1 2025-12-05
 ```
 
 #### 方式2：直接提交（开发测试）
@@ -95,7 +95,7 @@ spark-submit \
   --executor-cores 4 \
   --num-executors 200 \
   --conf spark.app.cluster_name=cluster1 \
-  --conf spark.app.target_date=2024-01-15 \
+  --conf spark.app.target_date=2025-12-05 \
   --conf spark.app.config_path=./config.yaml \
   --py-files parser.zip,models.zip,utils.zip \
   parse_spark_logs.py
@@ -162,7 +162,7 @@ spark_eventlog_parse_total{cluster="cluster1", status="success"}
 spark_eventlog_parse_duration_seconds{cluster="cluster1"}
 
 # 应用数量
-spark_applications_count{cluster="cluster1", date="2024-01-15"}
+spark_applications_count{cluster="cluster1", date="2025-12-05"}
 ```
 
 ### Grafana Dashboard
@@ -198,7 +198,7 @@ ORDER BY dt DESC;
 ```sql
 SELECT app_id, app_name, user, duration_ms
 FROM meta.spark_applications
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
   AND status = 'FAILED'
 ORDER BY duration_ms DESC
@@ -211,7 +211,7 @@ LIMIT 100;
 SELECT app_id, stage_id, stage_name, 
        skew_factor, task_duration_p95, task_duration_max
 FROM meta.spark_stages
-WHERE dt = '2024-01-15'
+WHERE dt = '2025-12-05'
   AND skew_factor > 5  -- 最慢Task是中位数的5倍以上
 ORDER BY skew_factor DESC
 LIMIT 50;
@@ -222,7 +222,7 @@ LIMIT 50;
 ```sql
 SELECT app_id, rule_desc, severity, diagnosis_detail, suggestion
 FROM meta.spark_diagnosis
-WHERE dt = '2024-01-15'
+WHERE dt = '2025-12-05'
   AND severity IN ('CRITICAL', 'WARNING')
 ORDER BY 
   CASE severity 
@@ -258,17 +258,17 @@ ORDER BY
 -- 1. 检查解析文件数
 SELECT COUNT(DISTINCT file_path) as file_count
 FROM meta.spark_parser_status
-WHERE dt = '2024-01-15' AND status = 'SUCCESS';
+WHERE dt = '2025-12-05' AND status = 'SUCCESS';
 
 -- 2. 检查应用数量
 SELECT COUNT(*) as app_count
 FROM meta.spark_applications
-WHERE dt = '2024-01-15';
+WHERE dt = '2025-12-05';
 
 -- 3. 对比前一天
 SELECT dt, COUNT(*) as app_count
 FROM meta.spark_applications
-WHERE dt IN ('2024-01-14', '2024-01-15')
+WHERE dt IN ('2024-01-14', '2025-12-05')
 GROUP BY dt;
 ```
 
@@ -303,7 +303,7 @@ GROUP BY dt;
 -- 检查重复记录
 SELECT cluster_name, app_id, dt, COUNT(*) as cnt
 FROM meta.spark_applications
-WHERE dt = '2024-01-15'
+WHERE dt = '2025-12-05'
 GROUP BY cluster_name, app_id, dt
 HAVING COUNT(*) > 1;
 ```
@@ -311,12 +311,12 @@ HAVING COUNT(*) > 1;
 **解决方案：**
 ```sql
 -- 手动去重
-INSERT OVERWRITE TABLE meta.spark_applications PARTITION(dt='2024-01-15')
+INSERT OVERWRITE TABLE meta.spark_applications PARTITION(dt='2025-12-05')
 SELECT * FROM (
   SELECT *, ROW_NUMBER() OVER(
     PARTITION BY cluster_name, app_id, dt 
     ORDER BY create_time DESC
   ) as rn
-  FROM meta.spark_applications WHERE dt='2024-01-15'
+  FROM meta.spark_applications WHERE dt='2025-12-05'
 ) t WHERE rn = 1;
 ```

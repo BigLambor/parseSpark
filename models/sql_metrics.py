@@ -24,21 +24,21 @@ class SQLMetrics:
     dt: str
     
     def to_dict(self):
-        """转换为字典"""
+        """转换为字典，确保类型正确"""
         return {
-            'cluster_name': self.cluster_name,
-            'app_id': self.app_id,
-            'execution_id': self.execution_id,
-            'sql_text': self.sql_text,
-            'description': self.description,
-            'physical_plan_description': self.physical_plan_description,
-            'start_time': self.start_time,
-            'end_time': self.end_time,
-            'duration_ms': self.duration_ms,
-            'job_ids': self.job_ids,
-            'status': self.status,
-            'error_message': self.error_message,
-            'dt': self.dt
+            'cluster_name': str(self.cluster_name) if self.cluster_name else '',
+            'app_id': str(self.app_id) if self.app_id else '',
+            'execution_id': int(self.execution_id) if self.execution_id is not None else 0,
+            'sql_text': str(self.sql_text) if self.sql_text else '',
+            'description': str(self.description) if self.description else None,
+            'physical_plan_description': str(self.physical_plan_description) if self.physical_plan_description else None,
+            'start_time': int(self.start_time) if self.start_time is not None else None,
+            'end_time': int(self.end_time) if self.end_time is not None else None,
+            'duration_ms': int(self.duration_ms) if self.duration_ms is not None else 0,
+            'job_ids': str(self.job_ids) if self.job_ids else '[]',
+            'status': str(self.status) if self.status else 'UNKNOWN',
+            'error_message': str(self.error_message) if self.error_message else None,
+            'dt': str(self.dt) if self.dt else ''
         }
 
 
@@ -53,13 +53,13 @@ class SparkConfigMetrics:
     dt: str
     
     def to_dict(self):
-        """转换为字典"""
+        """转换为字典，确保类型正确"""
         return {
-            'cluster_name': self.cluster_name,
-            'app_id': self.app_id,
-            'config_key': self.config_key,
-            'config_value': self.config_value,
-            'config_category': self.config_category,
-            'dt': self.dt
+            'cluster_name': str(self.cluster_name) if self.cluster_name else '',
+            'app_id': str(self.app_id) if self.app_id else '',
+            'config_key': str(self.config_key) if self.config_key else '',
+            'config_value': str(self.config_value) if self.config_value else '',
+            'config_category': str(self.config_category) if self.config_category else '',
+            'dt': str(self.dt) if self.dt else ''
         }
 

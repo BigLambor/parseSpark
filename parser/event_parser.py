@@ -23,7 +23,7 @@ class ApplicationState:
         self.app_name = None
         self.start_time = None
         self.end_time = None
-        self.user = None
+        self.app_user = None
         self.spark_version = None
         self.status = 'RUNNING'
         
@@ -66,7 +66,7 @@ class ApplicationState:
             end_time=self.end_time,
             duration_ms=duration_ms,
             status=self.status,
-            user=self.user or 'unknown',
+            app_user=self.app_user or 'unknown',
             spark_version=self.spark_version or 'unknown',
             executor_count=len(self.executors),
             total_cores=total_cores,
@@ -264,102 +264,75 @@ class EventLogParser:
         :param collect_tasks: 是否收集Task级别数据
         :return: 解析结果字典
         """
-        from pyspark import SparkContext
-        
-        # 获取当前SparkContext (在Executor端)
-        sc = SparkContext._active_spark_context
-        
-        # 获取Hadoop FileSystem
-        fs = sc._jvm.org.apache.hadoop.fs.FileSystem.get(
-            sc._jsc.hadoopConfiguration()
-        )
-        
-        path = sc._jvm.org.apache.hadoop.fs.Path(file_path)
-        
-        # 修复问题2: 检测并处理压缩格式（.lz4, .snappy等）
-        # 使用Hadoop CompressionCodecFactory自动检测压缩格式
-        codec_factory = sc._jvm.org.apache.hadoop.io.compress.CompressionCodecFactory(
-            sc._jsc.hadoopConfiguration()
-        )
-        codec = codec_factory.getCodec(path)
-        
-        # 打开文件流
-        raw_input_stream = fs.open(path)
-        
-        # 如果文件是压缩的，创建解压流；否则直接使用原始流
-        if codec is not None:
-            input_stream = codec.createInputStream(raw_input_stream)
-        else:
-            input_stream = raw_input_stream
+        import subprocess
         
         # 创建应用状态
         app_state = ApplicationState(cluster_name, target_date, collect_tasks)
         
-        # 修复P0问题：初始化reader变量，确保finally块可以访问
-        reader = None
+        # 初始化 process 变量
+        process = None
         
-        # 逐行解析
+        # 使用 hdfs dfs -text 命令读取文件
+        # -text 命令会自动检测并解压压缩格式（如 .lz4, .snappy, .gz 等）
         try:
-            # 使用Java BufferedReader读取
-            reader = sc._jvm.java.io.BufferedReader(
-                sc._jvm.java.io.InputStreamReader(input_stream, "UTF-8")
+            process = subprocess.Popen(
+                ['hdfs', 'dfs', '-text', file_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=1,  # 行缓冲
+                universal_newlines=False  # 二进制模式，手动解码
             )
             
-            line = reader.readLine()
             line_count = 0
             
-            while line is not None:
+            # 逐行读取并解析
+            for line_bytes in process.stdout:
                 line_count += 1
                 
                 try:
-                    # 解析JSON
-                    event = json.loads(str(line))
+                    # 解码并解析JSON
+                    line = line_bytes.decode('utf-8').strip()
+                    if not line:
+                        continue
+                    
+                    event = json.loads(line)
                     event_type = event.get('Event')
                     
                     # 分发到对应的处理函数
                     EventLogParser._handle_event(event_type, event, app_state)
                 
-                except json.JSONDecodeError as e:
-                    # 修复问题2: 压缩文件解析失败时提供更明确的错误信息
-                    # 如果遇到JSONDecodeError且文件是压缩的，可能是压缩格式问题
-                    if codec is not None:
-                        raise Exception(
-                            f"解析压缩文件失败: {file_path}, "
-                            f"压缩格式: {codec.getClass().getSimpleName()}, "
-                            f"JSON解析错误: {e}"
-                        )
-                    # 非压缩文件的无效JSON行，跳过
+                except json.JSONDecodeError:
+                    # 无效JSON行，跳过
                     pass
-                except Exception as e:
-                    # 记录错误但继续处理
+                except UnicodeDecodeError:
+                    # 解码错误，跳过该行
                     pass
-                
-                line = reader.readLine()
+                except Exception:
+                    # 其他错误，继续处理下一行
+                    pass
             
-            # 正常流程中关闭reader（会自动关闭底层流）
-            reader.close()
-            reader = None
+            # 等待进程结束并获取退出码
+            process.wait()
+            
+            # 检查是否有错误
+            if process.returncode != 0:
+                stderr_output = process.stderr.read().decode('utf-8', errors='replace')
+                raise Exception(f"hdfs dfs -text 命令失败，退出码: {process.returncode}, 错误: {stderr_output}")
         
+        except FileNotFoundError:
+            raise Exception(f"找不到 hdfs 命令，请确保 Hadoop 环境已正确配置")
         except Exception as e:
-            # 异常时记录错误，资源关闭交给finally块处理
             raise Exception(f"解析文件失败: {file_path}, 错误: {e}")
-        
         finally:
-            # 修复P0问题：统一在finally块中关闭资源，避免重复关闭
-            # 如果reader未关闭，先关闭reader；否则直接关闭底层流
-            try:
-                if reader is not None:
-                    reader.close()
-                elif codec is not None:
-                    # 使用了压缩，关闭解压流（会自动关闭底层流）
-                    if input_stream is not None:
-                        input_stream.close()
-                else:
-                    # 未使用压缩，关闭原始流
-                    if raw_input_stream is not None:
-                        raw_input_stream.close()
-            except:
-                pass
+            # 确保子进程资源被清理
+            if process is not None:
+                try:
+                    if process.stdout:
+                        process.stdout.close()
+                    if process.stderr:
+                        process.stderr.close()
+                except:
+                    pass
         
         # 返回解析结果
         return {
@@ -379,7 +352,7 @@ class EventLogParser:
             app_state.app_id = event.get('App ID')
             app_state.app_name = event.get('App Name')
             app_state.start_time = event.get('Timestamp')
-            app_state.user = event.get('User')
+            app_state.app_user = event.get('User')
             app_state.spark_version = event.get('Spark Version', 'unknown')
         
         elif event_type == 'SparkListenerApplicationEnd':

@@ -34,7 +34,7 @@ class FileScanner:
         
         files = []
         
-        # 方案1: 如果配置了日期子目录 (例如: /spark-logs/2024-01-15/)
+        # 方案1: 如果配置了日期子目录 (例如: /spark-logs/2025-12-05/)
         if config.use_date_subdir:
             date_subdir_path = FileScanner._build_date_subdir_path(sc, config)
             if fs.exists(date_subdir_path):
@@ -227,18 +227,27 @@ class FileScanner:
         :param file_paths: 文件路径列表
         :return: [(path, size), ...] 列表
         """
-        sc = spark.sparkContext
+        import subprocess
         
         def get_size(path_str):
+            """使用 hdfs dfs -stat 获取文件大小（可在 Executor 端执行）"""
             try:
-                fs = sc._jvm.org.apache.hadoop.fs.FileSystem.get(
-                    sc._jsc.hadoopConfiguration()
+                # 使用 hdfs dfs -stat %b 获取文件大小（字节数）
+                result = subprocess.run(
+                    ['hdfs', 'dfs', '-stat', '%b', path_str],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
                 )
-                path = sc._jvm.org.apache.hadoop.fs.Path(path_str)
-                size = fs.getFileStatus(path).getLen()
-                return (path_str, int(size))
+                if result.returncode == 0:
+                    size = int(result.stdout.strip())
+                    return (path_str, size)
+                else:
+                    return (path_str, 0)
             except Exception:
                 return (path_str, 0)
+        
+        sc = spark.sparkContext
         
         # 并行获取文件大小
         paths_rdd = sc.parallelize(file_paths, min(len(file_paths), 500))

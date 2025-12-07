@@ -19,7 +19,7 @@ class TestDateUtils(unittest.TestCase):
     
     def test_parse_date(self):
         """测试日期解析"""
-        dt = DateUtils.parse_date('2024-01-15')
+        dt = DateUtils.parse_date('2025-12-05')
         self.assertEqual(dt.year, 2024)
         self.assertEqual(dt.month, 1)
         self.assertEqual(dt.day, 15)
@@ -30,7 +30,7 @@ class TestDateUtils(unittest.TestCase):
     
     def test_timestamp_conversion(self):
         """测试时间戳转换"""
-        timestamp_ms = 1705276800000  # 2024-01-15 00:00:00
+        timestamp_ms = 1705276800000  # 2025-12-05 00:00:00
         dt = DateUtils.timestamp_to_datetime(timestamp_ms)
         
         self.assertEqual(dt.year, 2024)
@@ -39,9 +39,9 @@ class TestDateUtils(unittest.TestCase):
     
     def test_get_date_from_timestamp(self):
         """测试从时间戳提取日期"""
-        timestamp_ms = 1705276800000  # 2024-01-15
+        timestamp_ms = 1705276800000  # 2025-12-05
         date_str = DateUtils.get_date_from_timestamp(timestamp_ms)
-        self.assertEqual(date_str, '2024-01-15')
+        self.assertEqual(date_str, '2025-12-05')
 
 
 class TestHDFSUtils(unittest.TestCase):

@@ -16,7 +16,7 @@ class AppMetrics:
     end_time: Optional[int]
     duration_ms: int
     status: str
-    user: str
+    app_user: str
     spark_version: str
     executor_count: int
     total_cores: int
@@ -24,21 +24,21 @@ class AppMetrics:
     dt: str
     
     def to_dict(self):
-        """转换为字典"""
+        """转换为字典，确保类型正确"""
         return {
-            'cluster_name': self.cluster_name,
-            'app_id': self.app_id,
-            'app_name': self.app_name,
-            'start_time': self.start_time,
-            'end_time': self.end_time,
-            'duration_ms': self.duration_ms,
-            'status': self.status,
-            'user': self.user,
-            'spark_version': self.spark_version,
-            'executor_count': self.executor_count,
-            'total_cores': self.total_cores,
-            'total_memory_mb': self.total_memory_mb,
-            'dt': self.dt
+            'cluster_name': str(self.cluster_name) if self.cluster_name else '',
+            'app_id': str(self.app_id) if self.app_id else '',
+            'app_name': str(self.app_name) if self.app_name else '',
+            'start_time': int(self.start_time) if self.start_time is not None else None,
+            'end_time': int(self.end_time) if self.end_time is not None else None,
+            'duration_ms': int(self.duration_ms) if self.duration_ms is not None else 0,
+            'status': str(self.status) if self.status else 'UNKNOWN',
+            'app_user': str(self.app_user) if self.app_user else '',
+            'spark_version': str(self.spark_version) if self.spark_version else '',
+            'executor_count': int(self.executor_count) if self.executor_count is not None else 0,
+            'total_cores': int(self.total_cores) if self.total_cores is not None else 0,
+            'total_memory_mb': int(self.total_memory_mb) if self.total_memory_mb is not None else 0,
+            'dt': str(self.dt) if self.dt else ''
         }
 
 
@@ -56,16 +56,16 @@ class ExecutorMetrics:
     dt: str
     
     def to_dict(self):
-        """转换为字典"""
+        """转换为字典，确保类型正确"""
         return {
-            'cluster_name': self.cluster_name,
-            'app_id': self.app_id,
-            'executor_id': self.executor_id,
-            'host': self.host,
-            'add_time': self.add_time,
-            'remove_time': self.remove_time,
-            'total_cores': self.total_cores,
-            'max_memory_mb': self.max_memory_mb,
-            'dt': self.dt
+            'cluster_name': str(self.cluster_name) if self.cluster_name else '',
+            'app_id': str(self.app_id) if self.app_id else '',
+            'executor_id': str(self.executor_id) if self.executor_id else '',
+            'host': str(self.host) if self.host else '',
+            'add_time': int(self.add_time) if self.add_time is not None else None,
+            'remove_time': int(self.remove_time) if self.remove_time is not None else None,
+            'total_cores': int(self.total_cores) if self.total_cores is not None else 0,
+            'max_memory_mb': int(self.max_memory_mb) if self.max_memory_mb is not None else 0,
+            'dt': str(self.dt) if self.dt else ''
         }
 

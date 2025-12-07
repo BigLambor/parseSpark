@@ -13,7 +13,7 @@ class TestApplicationState(unittest.TestCase):
     
     def setUp(self):
         """初始化测试数据"""
-        self.app_state = ApplicationState('test_cluster', '2024-01-15')
+        self.app_state = ApplicationState('test_cluster', '2025-12-05')
     
     def test_app_metrics_conversion(self):
         """测试应用指标转换"""
@@ -21,7 +21,7 @@ class TestApplicationState(unittest.TestCase):
         self.app_state.app_name = 'TestApp'
         self.app_state.start_time = 1000000
         self.app_state.end_time = 2000000
-        self.app_state.user = 'test_user'
+        self.app_state.app_user = 'test_user'
         self.app_state.status = 'FINISHED'
         
         metrics = self.app_state.to_app_metrics()
@@ -31,7 +31,7 @@ class TestApplicationState(unittest.TestCase):
         self.assertEqual(metrics.app_name, 'TestApp')
         self.assertEqual(metrics.duration_ms, 1000000)
         self.assertEqual(metrics.status, 'FINISHED')
-        self.assertEqual(metrics.dt, '2024-01-15')
+        self.assertEqual(metrics.dt, '2025-12-05')
     
     def test_job_metrics_conversion(self):
         """测试Job指标转换"""
@@ -94,7 +94,7 @@ class TestApplicationState(unittest.TestCase):
     
     def test_skip_task_collection_when_disabled(self):
         """测试关闭Task收集开关"""
-        app_state = ApplicationState('cluster', '2024-01-15', collect_tasks=False)
+        app_state = ApplicationState('cluster', '2025-12-05', collect_tasks=False)
         EventLogParser._handle_event('SparkListenerTaskEnd', {
             'Task Info': {
                 'Launch Time': 0,

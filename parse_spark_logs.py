@@ -7,7 +7,7 @@ Spark EventLog 解析主程序
       --master yarn \
       --deploy-mode cluster \
       --conf spark.app.cluster_name=cluster1 \
-      --conf spark.app.target_date=2024-01-15 \
+      --conf spark.app.target_date=2025-12-05 \
       parse_spark_logs.py
 """
 

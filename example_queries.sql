@@ -20,7 +20,7 @@ SELECT
     SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed,
     SUM(CASE WHEN status = 'KILLED' THEN 1 ELSE 0 END) as killed
 FROM meta.spark_applications
-WHERE dt = '2024-01-15' AND cluster_name = 'cluster1';
+WHERE dt = '2025-12-05' AND cluster_name = 'cluster1';
 
 -- 1.3 查看应用详情（最新10个）
 SELECT 
@@ -32,7 +32,7 @@ SELECT
     executor_count,
     total_cores
 FROM meta.spark_applications
-WHERE dt = '2024-01-15' AND cluster_name = 'cluster1'
+WHERE dt = '2025-12-05' AND cluster_name = 'cluster1'
 ORDER BY start_time DESC
 LIMIT 10;
 
@@ -48,7 +48,7 @@ SELECT
     ROUND(duration_ms / 1000.0 / 60, 2) as duration_min,
     status
 FROM meta.spark_applications
-WHERE dt = '2024-01-15' AND cluster_name = 'cluster1'
+WHERE dt = '2025-12-05' AND cluster_name = 'cluster1'
 ORDER BY duration_ms DESC
 LIMIT 20;
 
@@ -60,7 +60,7 @@ SELECT
     ROUND(duration_ms / 1000.0, 2) as duration_sec,
     spark_version
 FROM meta.spark_applications
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
   AND status = 'FAILED'
 ORDER BY start_time DESC;
@@ -79,7 +79,7 @@ SELECT
 FROM meta.spark_stages s
 JOIN meta.spark_applications a 
     ON s.app_id = a.app_id AND s.dt = a.dt AND s.cluster_name = a.cluster_name
-WHERE s.dt = '2024-01-15'
+WHERE s.dt = '2025-12-05'
   AND s.cluster_name = 'cluster1'
   AND s.skew_factor > 5  -- 最慢Task是中位数的5倍以上
 ORDER BY s.skew_factor DESC
@@ -94,7 +94,7 @@ SELECT
     ROUND(shuffle_write_bytes / 1024.0 / 1024 / 1024, 2) as shuffle_write_gb,
     ROUND((shuffle_read_bytes + shuffle_write_bytes) / 1024.0 / 1024 / 1024, 2) as total_shuffle_gb
 FROM meta.spark_stages
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
   AND (shuffle_read_bytes > 0 OR shuffle_write_bytes > 0)
 ORDER BY (shuffle_read_bytes + shuffle_write_bytes) DESC
@@ -112,7 +112,7 @@ SELECT
     AVG(total_cores) as avg_cores,
     SUM(duration_ms) / 1000.0 / 3600 as total_runtime_hours
 FROM meta.spark_applications
-WHERE dt = '2024-01-15' AND cluster_name = 'cluster1'
+WHERE dt = '2025-12-05' AND cluster_name = 'cluster1'
 GROUP BY user
 ORDER BY total_runtime_hours DESC;
 
@@ -123,7 +123,7 @@ SELECT
     AVG(total_cores) as avg_cores_per_executor,
     AVG(max_memory_mb) as avg_memory_mb_per_executor
 FROM meta.spark_executors
-WHERE dt = '2024-01-15' AND cluster_name = 'cluster1'
+WHERE dt = '2025-12-05' AND cluster_name = 'cluster1'
 GROUP BY app_id
 ORDER BY executor_count DESC
 LIMIT 20;
@@ -164,7 +164,7 @@ ORDER BY dt DESC;
 -- 5.1 检查重复记录
 SELECT cluster_name, app_id, dt, COUNT(*) as cnt
 FROM meta.spark_applications
-WHERE dt = '2024-01-15'
+WHERE dt = '2025-12-05'
 GROUP BY cluster_name, app_id, dt
 HAVING COUNT(*) > 1;
 
@@ -177,7 +177,7 @@ SELECT
     SUM(CASE WHEN end_time IS NULL THEN 1 ELSE 0 END) as null_end_time,
     SUM(CASE WHEN duration_ms < 0 THEN 1 ELSE 0 END) as negative_duration
 FROM meta.spark_applications
-WHERE dt = '2024-01-15' AND cluster_name = 'cluster1';
+WHERE dt = '2025-12-05' AND cluster_name = 'cluster1';
 
 -- 5.3 检查时间合理性
 SELECT 
@@ -186,7 +186,7 @@ SELECT
     end_time,
     duration_ms
 FROM meta.spark_applications
-WHERE dt = '2024-01-15' 
+WHERE dt = '2025-12-05' 
   AND cluster_name = 'cluster1'
   AND (start_time > end_time OR duration_ms < 0)
 LIMIT 10;
@@ -200,7 +200,7 @@ SELECT
     HOUR(FROM_UNIXTIME(start_time / 1000)) as hour,
     COUNT(*) as app_count
 FROM meta.spark_applications
-WHERE dt = '2024-01-15' AND cluster_name = 'cluster1'
+WHERE dt = '2025-12-05' AND cluster_name = 'cluster1'
 GROUP BY HOUR(FROM_UNIXTIME(start_time / 1000))
 ORDER BY hour;
 
@@ -214,7 +214,7 @@ SELECT
 FROM meta.spark_applications a
 LEFT JOIN meta.spark_jobs j 
     ON a.app_id = j.app_id AND a.dt = j.dt AND a.cluster_name = j.cluster_name
-WHERE a.dt = '2024-01-15' AND a.cluster_name = 'cluster1'
+WHERE a.dt = '2025-12-05' AND a.cluster_name = 'cluster1'
 GROUP BY a.app_id, a.app_name
 HAVING failed_jobs > 0
 ORDER BY failed_jobs DESC
@@ -229,7 +229,7 @@ SELECT
     ROUND(AVG(skew_factor), 2) as avg_skew_factor,
     MAX(skew_factor) as max_skew_factor
 FROM meta.spark_stages
-WHERE dt = '2024-01-15' AND cluster_name = 'cluster1'
+WHERE dt = '2025-12-05' AND cluster_name = 'cluster1'
 GROUP BY app_id
 HAVING max_skew_factor > 10  -- 存在严重倾斜
 ORDER BY max_skew_factor DESC

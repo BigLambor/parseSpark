@@ -10,7 +10,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 setup(
     name="spark-eventlog-parser",
     version="1.0.0",
-    author="Data Team",
+    author="Asp BigData Team",
     description="Spark EventLog解析工具，用于分析大规模Spark作业性能",
     long_description=long_description,
     long_description_content_type="text/markdown",
