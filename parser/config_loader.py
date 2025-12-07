@@ -6,6 +6,8 @@ import yaml
 import os
 from typing import Dict, Any
 
+from parser.config_filter import normalize_filter
+
 
 class ParserConfig:
     """解析器配置类"""
@@ -59,6 +61,9 @@ class ParserConfig:
         self.scan_mode = parser_config.get('scan_mode', 'mtime')
         self.batch_size = parser_config.get('batch_size', 10000)
         self.num_partitions = int(spark_conf.get('spark.sql.shuffle.partitions', '2000'))
+
+        # Spark 配置过滤
+        self.spark_config_filter = normalize_filter(config_dict.get('spark_config_filter'))
         
     def validate(self):
         """验证配置完整性"""

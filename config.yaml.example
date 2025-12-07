@@ -127,6 +127,30 @@ monitoring:
     url: "http://monitor.company.com/api/metrics"
     auth_token: "${MONITOR_TOKEN}"
 
+# Spark配置采集过滤（默认只采集 spark.* 前缀的重点参数）
+spark_config_filter:
+  # 白名单（前缀 / 精确键），命中任意一项才采集
+  allow_prefixes:
+  #  - "spark."
+  #  - "spark.sql."
+  allow_keys: ['spark.executor.instances', 'spark.executor.cores', 'spark.executor.memory', 'spark.driver.memory', 'spark.task.cpus', 'spark.default.parallelism', 'spark.sql.shuffle.partitions', 'spark.reducer.maxSizeInFlight', 'spark.shuffle.compress', 'spark.shuffle.spill.compress', 'spark.sql.adaptive.enabled', 'spark.sql.adaptive.coalescePartitions.enabled', 'spark.sql.adaptive.skewJoin.enabled', 'spark.sql.autoBroadcastJoinThreshold', 'spark.sql.join.preferSortMergeJoin', 'spark.sql.sources.partitionOverwriteMode', 'spark.sql.hive.convertMetastoreParquet', 'spark.sql.parquet.outputTimestampType', 'spark.speculation', 'spark.speculation.quantile', 'spark.speculation.multiplier', 'spark.eventLog.enabled', 'spark.eventLog.dir']  # 黑名单（前缀 / 精确键），命中则丢弃
+  deny_prefixes:
+    - "spark.authenticate."
+    - "spark.hadoop.fs.s3a."
+    - "spark.hadoop.fs.obs."
+  deny_keys: []
+  # 敏感关键字命中即脱敏
+  sensitive_keywords: ["password", "secret", "token", "credential", "key"]
+  # 是否采集系统/Java属性（默认关闭）
+  collect_system_properties: false
+  collect_java_properties: false
+  # 敏感值脱敏；审计模式下仅保留键名
+  redact_sensitive_values: true
+  audit_only: false
+  # 兜底限制：每个应用最大配置条数、单值最大长度
+  max_configs_per_app: 200
+  max_value_length: 512
+
 # 错误处理配置
 error_handling:
   # 单文件解析失败策略

@@ -11,6 +11,8 @@ from pyspark.sql.types import (
 from datetime import datetime
 import time
 
+from parser.config_filter import sanitize_kv
+
 
 class HiveWriter:
     """Hive数据写入器"""
@@ -416,23 +418,49 @@ class HiveWriter:
         """
         from pyspark import RDD
         
+        filter_cfg = self.config.spark_config_filter
+
         if isinstance(config_metrics_source, RDD):
             if config_metrics_source.isEmpty():
                 print("Spark配置数据为空，跳过写入")
                 return
             
             print(f"准备从RDD写入Spark配置数据...")
-            df = self.spark.createDataFrame(
-                config_metrics_source.map(lambda x: x.to_dict()),
-                schema=self.CONFIG_SCHEMA
-            )
+            cfg_bc = self.spark.sparkContext.broadcast(filter_cfg)
+
+            def to_filtered_dict(config_obj):
+                d = config_obj.to_dict()
+                result = sanitize_kv(d['config_key'], d.get('config_value'), d.get('config_category'), cfg_bc.value)
+                if result is None:
+                    return None
+                d['config_key'], d['config_value'] = result
+                return d
+
+            filtered_rdd = config_metrics_source.map(to_filtered_dict).filter(lambda x: x is not None)
+            if filtered_rdd.isEmpty():
+                print("Spark配置数据全部被过滤，跳过写入")
+                return
+
+            df = self.spark.createDataFrame(filtered_rdd, schema=self.CONFIG_SCHEMA)
         else:
             if not config_metrics_source:
                 print("Spark配置数据为空，跳过写入")
                 return
             
             print(f"准备写入 {len(config_metrics_source)} 条Spark配置数据...")
-            data = [config.to_dict() for config in config_metrics_source]
+            data = []
+            for config in config_metrics_source:
+                d = config.to_dict()
+                result = sanitize_kv(d['config_key'], d.get('config_value'), d.get('config_category'), filter_cfg)
+                if result is None:
+                    continue
+                d['config_key'], d['config_value'] = result
+                data.append(d)
+
+            if not data:
+                print("Spark配置数据全部被过滤，跳过写入")
+                return
+
             df = self.spark.createDataFrame(data, schema=self.CONFIG_SCHEMA)
         
         # 添加创建时间（timestamp类型）

@@ -8,15 +8,18 @@ from models.app_metrics import AppMetrics, ExecutorMetrics
 from models.stage_metrics import StageMetrics, JobMetrics
 from models.sql_metrics import SQLMetrics, SparkConfigMetrics
 from parser.metrics_calculator import MetricsCalculator
+from parser.config_filter import normalize_filter, sanitize_items
 
 
 class ApplicationState:
     """应用状态管理器"""
     
-    def __init__(self, cluster_name, target_date, collect_tasks=True):
+    def __init__(self, cluster_name, target_date, collect_tasks=True, config_filter=None):
         self.cluster_name = cluster_name
         self.target_date = target_date
         self.collect_tasks = collect_tasks
+        self.config_filter = config_filter or {}
+        self.config_count = 0
         
         # 应用级别
         self.app_id = None
@@ -255,19 +258,22 @@ class EventLogParser:
     """EventLog解析器"""
     
     @staticmethod
-    def parse_file(file_path, cluster_name, target_date, collect_tasks=True):
+    def parse_file(file_path, cluster_name, target_date, collect_tasks=True, config_filter=None):
         """
         解析单个EventLog文件
         :param file_path: 文件路径
         :param cluster_name: 集群名称
         :param target_date: 目标日期
         :param collect_tasks: 是否收集Task级别数据
+        :param config_filter: Spark配置过滤策略
         :return: 解析结果字典
         """
         import subprocess
         
+        filter_cfg = normalize_filter(config_filter)
+        
         # 创建应用状态
-        app_state = ApplicationState(cluster_name, target_date, collect_tasks)
+        app_state = ApplicationState(cluster_name, target_date, collect_tasks, filter_cfg)
         
         # 初始化 process 变量
         process = None
@@ -569,22 +575,29 @@ class EventLogParser:
                 return result
             
             # Spark配置参数
+            filter_cfg = app_state.config_filter
+            current_count = app_state.config_count
+
             spark_properties = environment_info.get('Spark Properties', [])
             parsed_spark_props = parse_properties(spark_properties)
-            for key, value in parsed_spark_props.items():
-                app_state.spark_configs[key] = value
+            cleaned_spark, current_count = sanitize_items(parsed_spark_props.items(), 'spark', filter_cfg, current_count)
+            app_state.spark_configs.update(cleaned_spark)
             
-            # 系统属性（排除java.*开头的属性，避免重复存储）
+            # 系统属性（排除java.*，由过滤器控制是否采集）
             system_properties = environment_info.get('System Properties', [])
             parsed_system_props = parse_properties(system_properties)
-            for key, value in parsed_system_props.items():
-                if not key.startswith('java.'):
-                    app_state.system_properties[key] = value
+            if filter_cfg.get('collect_system_properties'):
+                non_java_props = {k: v for k, v in parsed_system_props.items() if not k.startswith('java.')}
+                cleaned_system, current_count = sanitize_items(non_java_props.items(), 'system', filter_cfg, current_count)
+                app_state.system_properties.update(cleaned_system)
             
-            # Java属性（单独存储java.*开头的属性）
-            for key, value in parsed_system_props.items():
-                if key.startswith('java.'):
-                    app_state.java_properties[key] = value
+            # Java属性
+            if filter_cfg.get('collect_java_properties'):
+                java_props = {k: v for k, v in parsed_system_props.items() if k.startswith('java.')}
+                cleaned_java, current_count = sanitize_items(java_props.items(), 'java', filter_cfg, current_count)
+                app_state.java_properties.update(cleaned_java)
+
+            app_state.config_count = current_count
         
         elif event_type == 'SparkListenerSQLExecutionStart':
             # 处理SQL执行开始事件

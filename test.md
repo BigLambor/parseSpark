@@ -418,7 +418,13 @@ ALTER TABLE meta.spark_sql_executions DROP IF EXISTS PARTITION (dt='2025-11-26')
 ALTER TABLE meta.spark_configs DROP IF EXISTS PARTITION (dt='2025-11-26');
 ```
 
-### 7.4 安全注意事项
+### 7.4 重跑数据，譬如前期逻辑问题，待bug修正后，需要重跑数据
+
+- 执行pre_rerun.sh 脚本，删除表里对应日期/集群的分区
+- 若只想补处理失败文件而不全量重跑，可以只删除 spark_parser_status 中 status='FAILED' 的记录或对应分区。
+
+
+### 7.5 安全注意事项
 
 - ⚠️ 不要在生产环境直接测试DELETE/DROP操作
 - ⚠️ 测试完成后恢复配置文件
@@ -523,5 +529,5 @@ EXECUTOR_MEMORY=16g EXECUTOR_MEMORY_OVERHEAD=3g ./submit_parser.sh cluster_sanqi
 ---
 
 **文档版本：** v1.0  
-**最后更新：** 2025-11-26
+**最后更新：** 2025-12-07
 

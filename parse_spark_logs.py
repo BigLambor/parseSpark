@@ -133,7 +133,8 @@ def parse_eventlogs(spark, config):
                 file_path, 
                 config.cluster_name,
                 config.target_date,
-                config.parse_tasks
+                config.parse_tasks,
+                config.spark_config_filter
             )
             return ('success', file_path, result)
         except Exception as e:
