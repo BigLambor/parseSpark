@@ -302,7 +302,13 @@ class EventLogParser:
                         continue
                     
                     event = json.loads(line)
-                    event_type = event.get('Event')
+                    # 兼容带包名的事件类型（如 org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionStart）
+                    raw_event_type = event.get('Event')
+                    event_type = (
+                        raw_event_type.split('.')[-1]
+                        if isinstance(raw_event_type, str)
+                        else raw_event_type
+                    )
                     
                     # 分发到对应的处理函数
                     EventLogParser._handle_event(event_type, event, app_state)
@@ -628,9 +634,46 @@ class EventLogParser:
                             event.get('physicalPlan') or
                             '')
             
-            # 如果sql_text为None或空字符串，使用description作为fallback
-            # 但优先使用非空的sql_text
-            final_sql_text = sql_text if (sql_text and sql_text.strip()) else (description if description else '')
+            # 判断 description 是否像真正的 SQL 语句
+            # 排除 DataFrame API 操作的堆栈描述（如 "insertInto at NativeMethodAccessorImpl.java:0"）
+            def is_sql_like(text):
+                """检查文本是否像真正的SQL语句"""
+                if not text:
+                    return False
+                text_upper = text.strip().upper()
+                # 常见的 SQL 语句关键字开头
+                sql_keywords = (
+                    'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 
+                    'ALTER', 'TRUNCATE', 'MERGE', 'WITH', 'SHOW', 'DESCRIBE',
+                    'EXPLAIN', 'USE', 'SET', 'ANALYZE', 'GRANT', 'REVOKE',
+                    'LOAD', 'UNLOAD', 'MSCK', 'REFRESH', 'CACHE', 'UNCACHE',
+                    'ADD', 'LIST', 'RESET'
+                )
+                # 排除 DataFrame API 操作描述的特征
+                non_sql_patterns = (
+                    ' AT ', '.JAVA:', '.SCALA:', '.PY:', '$$ANONFUN',
+                    'NATIVEMETHODACCESSORIMPL', 'LAMBDA$'
+                )
+                # 检查是否包含非 SQL 特征
+                for pattern in non_sql_patterns:
+                    if pattern in text_upper:
+                        return False
+                # 检查是否以 SQL 关键字开头
+                for keyword in sql_keywords:
+                    if text_upper.startswith(keyword):
+                        return True
+                return False
+            
+            # 确定最终的 SQL 文本
+            # 优先使用 sqlText，如果为空且 description 像 SQL 则使用 description
+            if sql_text and sql_text.strip():
+                final_sql_text = sql_text
+            elif is_sql_like(description):
+                final_sql_text = description
+            else:
+                # description 不像 SQL（可能是 DataFrame API 操作描述）
+                # 直接跳过，不记录这些非 SQL 的执行
+                return
             
             # 获取开始时间，确保不为None
             start_time = (event.get('timestamp') or 
@@ -664,18 +707,53 @@ class EventLogParser:
             except (ValueError, TypeError):
                 return  # 无法转换则跳过
             
-            # 如果缺少开始事件，创建一个不完整的记录（EventLog可能不完整）
+            # 如果缺少开始事件，需要判断是否创建记录
+            # 可能是：1) EventLog不完整  2) 开始事件因为非SQL被跳过
             if execution_id not in app_state.sql_executions:
                 # 尝试从结束事件中提取基本信息
                 sql_text = (event.get('sqlText') or 
                            event.get('SQL Text') or 
                            event.get('sql') or 
-                           event.get('description') or 
                            '')
+                description = event.get('description') or ''
+                
+                # 判断是否像真正的 SQL 语句（与开始事件使用相同的逻辑）
+                def is_sql_like_text(text):
+                    if not text:
+                        return False
+                    text_upper = text.strip().upper()
+                    sql_keywords = (
+                        'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 
+                        'ALTER', 'TRUNCATE', 'MERGE', 'WITH', 'SHOW', 'DESCRIBE',
+                        'EXPLAIN', 'USE', 'SET', 'ANALYZE', 'GRANT', 'REVOKE',
+                        'LOAD', 'UNLOAD', 'MSCK', 'REFRESH', 'CACHE', 'UNCACHE',
+                        'ADD', 'LIST', 'RESET'
+                    )
+                    non_sql_patterns = (
+                        ' AT ', '.JAVA:', '.SCALA:', '.PY:', '$$ANONFUN',
+                        'NATIVEMETHODACCESSORIMPL', 'LAMBDA$'
+                    )
+                    for pattern in non_sql_patterns:
+                        if pattern in text_upper:
+                            return False
+                    for keyword in sql_keywords:
+                        if text_upper.startswith(keyword):
+                            return True
+                    return False
+                
+                # 优先使用 sql_text，如果为空则检查 description
+                if sql_text and sql_text.strip():
+                    final_sql_text = sql_text
+                elif is_sql_like_text(description):
+                    final_sql_text = description
+                else:
+                    # 不像 SQL，直接跳过（可能是 DataFrame API 操作）
+                    return
+                
                 app_state.sql_executions[execution_id] = {
                     'execution_id': execution_id,
-                    'sql_text': sql_text,
-                    'description': event.get('description') or '',
+                    'sql_text': final_sql_text,
+                    'description': description,
                     'physical_plan_description': '',
                     'start_time': 0,  # 未知开始时间
                     'end_time': None,
